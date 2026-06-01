@@ -252,6 +252,132 @@ function SchedulesPage() {
     onError: (e: any) => toast.error(e.message ?? "Failed"),
   });
 
+  const currentChannel = channels.find((c) => c.id === channelId) ?? null;
+
+  // Latest end time across this channel's schedule items (excludes current schedule)
+  const { data: prevEnd } = useQuery({
+    enabled: !!channelId,
+    queryKey: ["prev-end", channelId, loaded?.schedule?.id ?? null],
+    queryFn: async () => {
+      const { data: scheds, error } = await supabase
+        .from("schedules")
+        .select("id")
+        .eq("channel_id", channelId!);
+      if (error) throw error;
+      const ids = (scheds ?? []).map((s) => s.id).filter((id) => id !== loaded?.schedule?.id);
+      if (ids.length === 0) return null;
+      const { data: rows, error: e2 } = await supabase
+        .from("schedule_items")
+        .select("start_at,duration_ms,transition_ms")
+        .in("schedule_id", ids);
+      if (e2) throw e2;
+      let max = 0;
+      for (const r of rows ?? []) {
+        const t = new Date(r.start_at).getTime() + r.duration_ms + r.transition_ms;
+        if (t > max) max = t;
+      }
+      return max ? new Date(max).toISOString() : null;
+    },
+  });
+
+  // Auto-prefill date + start time from previous schedule's end (unless user touched start time)
+  useEffect(() => {
+    if (!prevEnd || startTimeTouched) return;
+    if (loaded?.items.length) return; // existing schedule has items, leave alone
+    const d = new Date(prevEnd);
+    setDate(format(d, "yyyy-MM-dd"));
+    setStartTime(format(d, "HH:mm"));
+  }, [prevEnd, loaded, startTimeTouched]);
+
+  const editChannel = useMutation({
+    mutationFn: async (v: { name: string; slug: string }) => {
+      if (!channelId) throw new Error("No channel");
+      nameSchema.parse(v.name);
+      slugSchema.parse(v.slug);
+      const { error } = await supabase
+        .from("channels")
+        .update({ name: v.name, slug: v.slug })
+        .eq("id", channelId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Channel updated");
+      qc.invalidateQueries({ queryKey: ["channels"] });
+      setEditChannelOpen(false);
+    },
+    onError: (e: any) => toast.error(e.message ?? "Failed"),
+  });
+
+  const deleteChannel = useMutation({
+    mutationFn: async () => {
+      if (!channelId) throw new Error("No channel");
+      // Delete dependent rows first (no FK cascade defined)
+      const { data: scheds } = await supabase
+        .from("schedules")
+        .select("id")
+        .eq("channel_id", channelId);
+      const schedIds = (scheds ?? []).map((s) => s.id);
+      if (schedIds.length > 0) {
+        await supabase.from("schedule_items").delete().in("schedule_id", schedIds);
+        await supabase.from("schedules").delete().in("id", schedIds);
+      }
+      const { error } = await supabase.from("channels").delete().eq("id", channelId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Channel deleted");
+      setDeleteChannelOpen(false);
+      setChannelId(null);
+      setItems([]);
+      qc.invalidateQueries({ queryKey: ["channels"] });
+    },
+    onError: (e: any) => toast.error(e.message ?? "Failed"),
+  });
+
+  const createMut = useMutation({
+    mutationFn: async () => {
+      if (!channelId) throw new Error("Pick a channel");
+      const { data: u } = await supabase.auth.getUser();
+      const uid = u.user?.id;
+      if (!uid) throw new Error("Not authenticated");
+      // Derive date + start from previous end if present
+      let useDate = date;
+      let useStart = startTime;
+      if (prevEnd) {
+        const d = new Date(prevEnd);
+        useDate = format(d, "yyyy-MM-dd");
+        useStart = format(d, "HH:mm");
+        setDate(useDate);
+        setStartTime(useStart);
+        setStartTimeTouched(false);
+      }
+      // Don't duplicate an existing schedule for the same day
+      const { data: existing } = await supabase
+        .from("schedules")
+        .select("id")
+        .eq("channel_id", channelId)
+        .eq("schedule_date", useDate)
+        .maybeSingle();
+      if (existing) {
+        toast.message("A schedule already exists for this date — loaded it");
+        return existing.id;
+      }
+      const { data: ins, error } = await supabase
+        .from("schedules")
+        .insert({ channel_id: channelId, schedule_date: useDate, autopilot: false, owner_id: uid })
+        .select("id")
+        .single();
+      if (error) throw error;
+      return ins.id;
+    },
+    onSuccess: () => {
+      toast.success("Schedule created — add videos to fill up to 24h");
+      qc.invalidateQueries({ queryKey: ["schedule", channelId, date] });
+      qc.invalidateQueries({ queryKey: ["prev-end", channelId] });
+    },
+    onError: (e: any) => toast.error(e.message ?? "Failed"),
+  });
+
   function addVideos(videos: Video[]) {
     setItems((arr) => [
       ...arr,
