@@ -1,13 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { mergePlayoutIntoSettings, parseChannelPlayoutSettings } from "@/lib/channels/settings";
 import {
-  autoPushIfNeeded,
   executePushScheduleToMist,
   recordMistPushStatus,
 } from "@/lib/mist/push-schedule.server";
+import { persistScheduleAndPush } from "@/lib/schedule/persist-schedule.server";
 
 const scheduleItemInput = z.object({
   video_id: z.string().uuid(),
@@ -30,84 +31,14 @@ export const saveScheduleAndPush = createServerFn({ method: "POST" })
     }),
   )
   .handler(async ({ data, context }) => {
-    const uid = context.userId;
-
-    let schedId = data.existingScheduleId;
-    if (!schedId) {
-      const { data: ins, error } = await context.supabase
-        .from("schedules")
-        .insert({
-          channel_id: data.channelId,
-          schedule_date: data.scheduleDate,
-          autopilot: data.autopilot,
-          owner_id: uid,
-        })
-        .select("id")
-        .single();
-      if (error) throw error;
-      schedId = ins.id;
-    } else {
-      const { error } = await context.supabase
-        .from("schedules")
-        .update({ autopilot: data.autopilot })
-        .eq("id", schedId)
-        .eq("owner_id", uid);
-      if (error) throw error;
-    }
-
-    const { error: delErr } = await context.supabase
-      .from("schedule_items")
-      .delete()
-      .eq("schedule_id", schedId);
-    if (delErr) throw delErr;
-
-    if (data.items.length > 0) {
-      const rows = data.items.map((it, i) => ({
-        schedule_id: schedId!,
-        owner_id: uid,
-        video_id: it.video_id,
-        position: i,
-        start_at: it.start_at,
-        duration_ms: it.duration_ms,
-        transition_ms: it.transition_ms,
-        source_snapshot: it.source_snapshot,
-      }));
-      const { error: insErr } = await context.supabase.from("schedule_items").insert(rows);
-      if (insErr) throw insErr;
-    }
-
-    let push: Awaited<ReturnType<typeof autoPushIfNeeded>> = {
-      pushed: false,
-      reason: data.items.length === 0 ? "Schedule has no items" : undefined,
-    };
-
-    if (data.items.length > 0) {
-      try {
-        push = await autoPushIfNeeded(
-          context.supabase,
-          uid,
-          data.channelId,
-          schedId,
-          data.scheduleDate,
-          { insertGaps: data.insertGapsOnPush },
-        );
-      } catch (err) {
-        return {
-          scheduleId: schedId,
-          saved: true,
-          pushed: false,
-          pushError: err instanceof Error ? err.message : "Mist push failed",
-        };
-      }
-    }
-
-    return {
-      scheduleId: schedId,
-      saved: true,
-      pushed: push.pushed,
-      pushSkippedReason: push.reason,
-      pushResult: push.result,
-    };
+    return persistScheduleAndPush(context.supabase, context.userId, {
+      channelId: data.channelId,
+      scheduleDate: data.scheduleDate,
+      autopilot: data.autopilot,
+      existingScheduleId: data.existingScheduleId,
+      items: data.items,
+      insertGapsOnPush: data.insertGapsOnPush,
+    });
   });
 
 export const updateChannelPlayout = createServerFn({ method: "POST" })

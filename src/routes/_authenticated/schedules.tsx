@@ -39,7 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { GripVertical, Plus, Save, Trash2, Calendar as CalendarIcon, Search } from "lucide-react";
+import { GripVertical, Plus, Save, Trash2, Calendar as CalendarIcon, Search, Bot } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { parseChannelPlayoutSettings } from "@/lib/channels/settings";
@@ -48,6 +48,7 @@ import {
   saveScheduleAndPush,
   updateChannelPlayout,
 } from "@/lib/api/schedule.functions";
+import { runAutopilotNow } from "@/lib/api/autopilot.functions";
 
 export const Route = createFileRoute("/_authenticated/schedules")({
   head: () => ({ meta: [{ title: "Schedules — ewatv" }] }),
@@ -248,6 +249,25 @@ function SchedulesPage() {
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Update failed"),
   });
 
+  const autopilotMut = useMutation({
+    mutationFn: async () => {
+      if (!channelId) throw new Error("Pick a channel");
+      return runAutopilotNow({
+        data: { channelId, targetDate: date },
+      });
+    },
+    onSuccess: (res) => {
+      toast.success(
+        res.pushed
+          ? `Autopilot: ${res.itemCount} items, pushed to Mist`
+          : `Autopilot: ${res.itemCount} items (${res.pushSkippedReason ?? res.pushError ?? "saved"})`,
+      );
+      qc.invalidateQueries({ queryKey: ["schedule", channelId, date] });
+      qc.invalidateQueries({ queryKey: ["channels"] });
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Autopilot failed"),
+  });
+
   const retryPushMut = useMutation({
     mutationFn: async (scheduleId: string) => {
       return retryPushScheduleToMist({ data: { scheduleId, insertGaps: true } });
@@ -366,6 +386,16 @@ function SchedulesPage() {
               Retry Mist push
             </Button>
           )}
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={autopilotMut.isPending || !channelId || !autopilot}
+            onClick={() => autopilotMut.mutate()}
+            title="Generate this day from library rules (tomorrow via nightly cron)"
+          >
+            <Bot className="mr-2 h-4 w-4" />
+            Run autopilot
+          </Button>
           <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !channelId}>
             <Save /> Save
           </Button>

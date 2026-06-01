@@ -41,3 +41,11 @@ next_start = prev_start + duration_ms + transition_ms
 Stage in `playlists_import` table (if added) or parse client-side → create `videos` + `schedule_items`.
 
 Supported formats per plan: m3u, txt, csv, markdown.
+## Autopilot cron (milestone 2)
+
+- **Nightly:** `POST /api/cron/autopilot` with `Authorization: Bearer $AUTOPILOT_CRON_SECRET`
+- **Jobs:** generate **tomorrow** for `autopilot=true` (empty items only); **push today** if `playout_active`
+- **Manual:** `/schedules` → **Run autopilot** (requires Autopilot toggle on that day)
+- **TZ:** `AUTOPILOT_TIMEZONE` (default `Europe/Helsinki`)
+- Script: `deploy/cron/autopilot.sh`
+
