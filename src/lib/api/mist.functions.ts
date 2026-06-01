@@ -119,7 +119,7 @@ export const pushScheduleToMist = createServerFn({ method: "POST" })
           mode: "direct" as const,
           streamName,
           hlsUrl: publicHlsUrl(streamName),
-          mistResponse,
+          mistResponse: JSON.stringify(mistResponse),
           itemCount: 1,
         };
       }
