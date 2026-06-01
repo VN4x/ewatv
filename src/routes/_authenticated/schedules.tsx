@@ -106,6 +106,8 @@ function SchedulesPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [newChannelOpen, setNewChannelOpen] = useState(false);
+  const [editChannelOpen, setEditChannelOpen] = useState(false);
+  const [deleteChannelOpen, setDeleteChannelOpen] = useState(false);
 
   const { data: channels = [] } = useQuery({
     queryKey: ["channels"],
