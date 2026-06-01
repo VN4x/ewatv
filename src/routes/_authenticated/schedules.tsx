@@ -300,6 +300,82 @@ function SchedulesPage() {
     onError: (e: any) => toast.error(e.message ?? "Failed"),
   });
 
+  // Schedule count for the currently selected channel — shown in delete dialog
+  const { data: channelScheduleCount } = useQuery({
+    enabled: !!channelId && deleteChannelOpen,
+    queryKey: ["channel-schedule-count", channelId],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from("schedules")
+        .select("id", { count: "exact", head: true })
+        .eq("channel_id", channelId!);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+
+  const editChannel = useMutation({
+    mutationFn: async (v: { name: string; slug: string }) => {
+      if (!channelId) throw new Error("No channel selected");
+      nameSchema.parse(v.name);
+      slugSchema.parse(v.slug);
+      // Prevent slug collision (excluding self)
+      const { data: dup } = await supabase
+        .from("channels")
+        .select("id")
+        .eq("slug", v.slug)
+        .neq("id", channelId)
+        .maybeSingle();
+      if (dup) throw new Error("Slug already in use by another channel");
+      const { error } = await supabase
+        .from("channels")
+        .update({ name: v.name, slug: v.slug })
+        .eq("id", channelId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Channel updated");
+      qc.invalidateQueries({ queryKey: ["channels"] });
+      setEditChannelOpen(false);
+    },
+    onError: (e: any) => toast.error(e.message ?? "Failed to update channel"),
+  });
+
+  const deleteChannel = useMutation({
+    mutationFn: async () => {
+      if (!channelId) throw new Error("No channel selected");
+      // Cascade: schedule_items -> schedules -> channel (no FK cascade in DB)
+      const { data: scheds, error: e1 } = await supabase
+        .from("schedules")
+        .select("id")
+        .eq("channel_id", channelId);
+      if (e1) throw e1;
+      const ids = (scheds ?? []).map((s) => s.id);
+      if (ids.length > 0) {
+        const { error: e2 } = await supabase
+          .from("schedule_items")
+          .delete()
+          .in("schedule_id", ids);
+        if (e2) throw e2;
+        const { error: e3 } = await supabase
+          .from("schedules")
+          .delete()
+          .in("id", ids);
+        if (e3) throw e3;
+      }
+      const { error } = await supabase.from("channels").delete().eq("id", channelId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Channel deleted");
+      setDeleteChannelOpen(false);
+      setChannelId(null);
+      setItems([]);
+      qc.invalidateQueries({ queryKey: ["channels"] });
+    },
+    onError: (e: any) => toast.error(e.message ?? "Failed to delete channel"),
+  });
+
   function addVideos(videos: Video[]) {
     setItems((arr) => [
       ...arr,
