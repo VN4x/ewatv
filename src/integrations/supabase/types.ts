@@ -14,16 +14,295 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      channels: {
+        Row: {
+          created_at: string
+          id: string
+          mist_stream_name: string | null
+          name: string
+          overlay_logo_url: string | null
+          owner_id: string
+          settings: Json
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          mist_stream_name?: string | null
+          name: string
+          overlay_logo_url?: string | null
+          owner_id: string
+          settings?: Json
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          mist_stream_name?: string | null
+          name?: string
+          overlay_logo_url?: string | null
+          owner_id?: string
+          settings?: Json
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      collections: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          owner_id: string
+          parent_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          owner_id: string
+          parent_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          owner_id?: string
+          parent_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "collections_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      schedule_items: {
+        Row: {
+          created_at: string
+          duration_ms: number
+          id: string
+          owner_id: string
+          position: number
+          schedule_id: string
+          source_snapshot: Json
+          start_at: string
+          transition_ms: number
+          video_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          duration_ms: number
+          id?: string
+          owner_id: string
+          position: number
+          schedule_id: string
+          source_snapshot?: Json
+          start_at: string
+          transition_ms?: number
+          video_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          duration_ms?: number
+          id?: string
+          owner_id?: string
+          position?: number
+          schedule_id?: string
+          source_snapshot?: Json
+          start_at?: string
+          transition_ms?: number
+          video_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_items_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "schedules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_items_video_id_fkey"
+            columns: ["video_id"]
+            isOneToOne: false
+            referencedRelation: "videos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      schedules: {
+        Row: {
+          autopilot: boolean
+          channel_id: string
+          created_at: string
+          id: string
+          owner_id: string
+          schedule_date: string
+          updated_at: string
+        }
+        Insert: {
+          autopilot?: boolean
+          channel_id: string
+          created_at?: string
+          id?: string
+          owner_id: string
+          schedule_date: string
+          updated_at?: string
+        }
+        Update: {
+          autopilot?: boolean
+          channel_id?: string
+          created_at?: string
+          id?: string
+          owner_id?: string
+          schedule_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedules_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      videos: {
+        Row: {
+          auto_subs: boolean
+          category: string | null
+          collection_id: string | null
+          created_at: string
+          daypart: Database["public"]["Enums"]["daypart"]
+          description: string | null
+          hide_overlay: boolean
+          id: string
+          length_sec: number
+          owner_id: string
+          source_ref: string
+          source_type: Database["public"]["Enums"]["video_source"]
+          tags: string[]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          auto_subs?: boolean
+          category?: string | null
+          collection_id?: string | null
+          created_at?: string
+          daypart?: Database["public"]["Enums"]["daypart"]
+          description?: string | null
+          hide_overlay?: boolean
+          id?: string
+          length_sec?: number
+          owner_id: string
+          source_ref: string
+          source_type?: Database["public"]["Enums"]["video_source"]
+          tags?: string[]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          auto_subs?: boolean
+          category?: string | null
+          collection_id?: string | null
+          created_at?: string
+          daypart?: Database["public"]["Enums"]["daypart"]
+          description?: string | null
+          hide_overlay?: boolean
+          id?: string
+          length_sec?: number
+          owner_id?: string
+          source_ref?: string
+          source_type?: Database["public"]["Enums"]["video_source"]
+          tags?: string[]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "videos_collection_id_fkey"
+            columns: ["collection_id"]
+            isOneToOne: false
+            referencedRelation: "collections"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
+      daypart: "any" | "primetime" | "night"
+      video_source:
+        | "mega_s3"
+        | "direct_url"
+        | "youtube"
+        | "vimeo"
+        | "dailymotion"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +429,16 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user"],
+      daypart: ["any", "primetime", "night"],
+      video_source: [
+        "mega_s3",
+        "direct_url",
+        "youtube",
+        "vimeo",
+        "dailymotion",
+      ],
+    },
   },
 } as const
