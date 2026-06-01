@@ -366,6 +366,8 @@ function VideoDialog({
   trigger: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const probeServer = useServerFn(probeVideoDuration);
+  const [probing, setProbing] = useState(false);
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [lengthSec, setLengthSec] = useState(existing?.length_sec ?? 0);
