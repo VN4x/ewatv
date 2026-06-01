@@ -39,7 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { GripVertical, Plus, Save, Trash2, Calendar as CalendarIcon, Search, Bot } from "lucide-react";
+import { GripVertical, Plus, Save, Trash2, Calendar as CalendarIcon, Search, Bot, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { parseChannelPlayoutSettings } from "@/lib/channels/settings";
