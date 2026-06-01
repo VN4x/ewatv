@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Tv, Library, Calendar, MonitorPlay, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export const Route = createFileRoute("/_authenticated")({
   component: AuthenticatedLayout,
