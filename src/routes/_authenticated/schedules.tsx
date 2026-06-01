@@ -39,7 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { GripVertical, Plus, Save, Trash2, Calendar as CalendarIcon, Search } from "lucide-react";
+import { GripVertical, Plus, Save, Trash2, Calendar as CalendarIcon, Search, Pencil, CalendarPlus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
