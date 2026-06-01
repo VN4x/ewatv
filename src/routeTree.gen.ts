@@ -9,38 +9,104 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedSchedulesRouteImport } from './routes/_authenticated/schedules'
+import { Route as AuthenticatedPlayoutRouteImport } from './routes/_authenticated/playout'
+import { Route as AuthenticatedCollectionsRouteImport } from './routes/_authenticated/collections'
 
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedRoute = AuthenticatedRouteImport.update({
+  id: '/_authenticated',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedSchedulesRoute = AuthenticatedSchedulesRouteImport.update({
+  id: '/schedules',
+  path: '/schedules',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedPlayoutRoute = AuthenticatedPlayoutRouteImport.update({
+  id: '/playout',
+  path: '/playout',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedCollectionsRoute =
+  AuthenticatedCollectionsRouteImport.update({
+    id: '/collections',
+    path: '/collections',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/collections': typeof AuthenticatedCollectionsRoute
+  '/playout': typeof AuthenticatedPlayoutRoute
+  '/schedules': typeof AuthenticatedSchedulesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/collections': typeof AuthenticatedCollectionsRoute
+  '/playout': typeof AuthenticatedPlayoutRoute
+  '/schedules': typeof AuthenticatedSchedulesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/login': typeof LoginRoute
+  '/_authenticated/collections': typeof AuthenticatedCollectionsRoute
+  '/_authenticated/playout': typeof AuthenticatedPlayoutRoute
+  '/_authenticated/schedules': typeof AuthenticatedSchedulesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/login' | '/collections' | '/playout' | '/schedules'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/login' | '/collections' | '/playout' | '/schedules'
+  id:
+    | '__root__'
+    | '/'
+    | '/_authenticated'
+    | '/login'
+    | '/_authenticated/collections'
+    | '/_authenticated/playout'
+    | '/_authenticated/schedules'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  LoginRoute: typeof LoginRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated': {
+      id: '/_authenticated'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,12 +114,61 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/schedules': {
+      id: '/_authenticated/schedules'
+      path: '/schedules'
+      fullPath: '/schedules'
+      preLoaderRoute: typeof AuthenticatedSchedulesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/playout': {
+      id: '/_authenticated/playout'
+      path: '/playout'
+      fullPath: '/playout'
+      preLoaderRoute: typeof AuthenticatedPlayoutRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/collections': {
+      id: '/_authenticated/collections'
+      path: '/collections'
+      fullPath: '/collections'
+      preLoaderRoute: typeof AuthenticatedCollectionsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
   }
 }
 
+interface AuthenticatedRouteChildren {
+  AuthenticatedCollectionsRoute: typeof AuthenticatedCollectionsRoute
+  AuthenticatedPlayoutRoute: typeof AuthenticatedPlayoutRoute
+  AuthenticatedSchedulesRoute: typeof AuthenticatedSchedulesRoute
+}
+
+const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedCollectionsRoute: AuthenticatedCollectionsRoute,
+  AuthenticatedPlayoutRoute: AuthenticatedPlayoutRoute,
+  AuthenticatedSchedulesRoute: AuthenticatedSchedulesRoute,
+}
+
+const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
+  AuthenticatedRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  LoginRoute: LoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
