@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# Example cron: weekly horizon refresh + push today.
-# Example cron: daily autopilot (generate tomorrow + push today).
-# Install on VPS or use GitHub Actions scheduled workflow.
+# Daily autopilot @ 04:00 air timezone (before early viewers).
+# - Fills rolling 7-day schedule in Postgres (empty days only)
+# - Pushes TODAY to Mist (playout_active channels)
 #
-# Crontab (05:00 Europe/Helsinki — adjust for host TZ):
-#   0 5 * * * /path/to/deploy/cron/autopilot.sh >> /var/log/ewatv-autopilot.log 2>&1
+# Crontab example (see deploy/cron/README.md):
+#   CRON_TZ=Europe/Helsinki
+#   0 4 * * * /path/to/deploy/cron/autopilot.sh >> /var/log/ewatv-autopilot.log 2>&1
 
 set -euo pipefail
 
 APP_URL="${EWATV_APP_URL:-https://your-lovable-app.lovable.app}"
 SECRET="${AUTOPILOT_CRON_SECRET:?Set AUTOPILOT_CRON_SECRET}"
+
+echo "ewatv autopilot starting at $(date -Is) (target: daily push before early viewers)"
 
 curl -fsS -X POST "${APP_URL}/api/cron/autopilot" \
   -H "Content-Type: application/json" \

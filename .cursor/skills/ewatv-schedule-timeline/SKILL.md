@@ -1,51 +1,58 @@
 ---
 name: ewatv-schedule-timeline
-description: Build ewatv schedule timeline UI, recompute start_at, autopilot, and gap insertion. Use for /schedules page and schedule_items logic.
+description: ewatv Schedules UI, channel autopilot weekly, saveScheduleAndPush, dayparts, drag-and-drop, and daily Mist air-date rules.
 ---
 
-# ewatv schedule timeline skill
+# ewatv schedules & timeline
 
-## Data model
+## Channel-level autopilot (persistent)
 
-- `schedules`: per `channel_id` + `schedule_date`, `autopilot` flag.
-- `schedule_items`: `position`, `start_at` (timestamptz), `duration_ms`, `transition_ms` (default 2000), `video_id`, `source_snapshot` jsonb.
+- **`channels.settings.autopilot_enabled`** — on until user turns off (not per-date UI state)
+- **`channels.settings.autoplay_week_days`** — default 7 (rolling horizon)
+- Toggle: `updateChannelAutopilot` in `src/lib/api/autopilot.functions.ts`
+- UI: `/schedules` — “Autopilot weekly (7 days)”
 
-## Gap / black screen (1500ms)
+## Weekly DB vs daily Mist
 
-Insert rows with:
+| | Postgres | Mist |
+|---|----------|------|
+| Autopilot cron + toggle | Fills **today…today+6** (empty slots only) | — |
+| Air day | Row for that calendar date | **Today's** `.pls` pushed |
+| Future day | Stored | Pushed when date becomes today (**04:00 cron**) |
 
-```json
-{ "kind": "gap", "duration_ms": 1500, "show_logo": true }
-```
+Won't overwrite days that already have `schedule_items`.
 
-`video_id` = null. Player keeps logo on during gap; Mist plays `MIST_GAP_ASSET_PATH` (e.g. `/media/gap-black.mp4`).
+## Save flow
 
-Helper: `insertGapItems()` and `scheduleItemsToPlsLines({ insertGaps: true })` in `src/lib/mist/playlist.server.ts`.
+- **`saveScheduleAndPush`** — persists items + pushes if `playout_active` && **today**
+- Sets `schedules.autopilot` from channel `autopilot_enabled`
+- Toast explains skip reason for future/past dates
 
-## Recompute timing
+## Timeline fields
 
-After drag/drop or duration edit, run `recomputeStartTimes(items, dayStart)` from `src/lib/schedule/timeline.server.ts`:
+- `schedule_items`: `position`, `start_at`, `duration_ms`, `transition_ms` (default 2000)
+- Recompute: `recomputeStartTimes()` in `src/lib/schedule/timeline.server.ts`
+- Gaps: `video_id: null`, `source_snapshot: { kind: "gap", duration_ms: 1500 }`
 
-```text
-next_start = prev_start + duration_ms + transition_ms
-```
+## Generator (autopilot)
 
-## Future /schedules UI
+- `generateAutopilotScheduleItems()` — daypart slots (primetime 18–23, night 23–06, day 06–18)
+- Avoid same `category` within last 3 picks
+- `generateWeeklySchedulesForChannel()` — skips non-empty days
 
-- Calendar picks `schedule_date` → load items ordered by `position`.
-- On reorder: update positions, call recompute, batch upsert `start_at`.
-- Autopilot: server cron `runAutopilot` 24h before (not implemented yet) — generate items then `pushScheduleToMist`.
+## UI routes
 
-## Importers (later)
+- `/schedules` — Lovable DnD editor (`@dnd-kit`)
+- **Run autopilot** — refresh empty days in horizon for channel
+- **Retry Mist push** — manual recovery
+- **Playout active** — master switch for Mist
 
-Stage in `playlists_import` table (if added) or parse client-side → create `videos` + `schedule_items`.
+## 04:00 cron
 
-Supported formats per plan: m3u, txt, csv, markdown.
-## Autopilot (channel-level, weekly)
+See skill `ewatv-autopilot-cron` — push today before early viewers.
 
-- **Toggle:** `channels.settings.autopilot_enabled` — stays on until user turns off (`updateChannelAutopilot`)
-- **Horizon:** rolling **7 days** (today … today+6), `AUTOPILOT_WEEK_DAYS` env override
-- **Cron:** `POST /api/cron/autopilot` — fills **empty** days only (won't overwrite manual schedules)
-- **Push:** today's air date still auto-pushes when `playout_active`
-- **UI:** `/schedules` → Autopilot weekly switch; **Run autopilot** = refresh empty week days
+## Not yet / Lovable
 
+- m3u/csv/md importers
+- Calendar month view polish
+- `nowPlaying` on playout page (separate Lovable task)
