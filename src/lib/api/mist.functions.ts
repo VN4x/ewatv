@@ -138,7 +138,7 @@ export const pushScheduleToMist = createServerFn({ method: "POST" })
       hlsUrl: publicHlsUrl(streamName),
       plsPreview: pls.split("\n").slice(0, 30).join("\n"),
       itemCount: plsLines.length,
-      syncResult: syncResult.body,
+      syncResult: typeof syncResult.body === "string" ? syncResult.body : JSON.stringify(syncResult.body),
     };
   });
 
