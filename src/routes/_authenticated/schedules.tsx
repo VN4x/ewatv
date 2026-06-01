@@ -417,6 +417,47 @@ function SchedulesPage() {
               </DialogTrigger>
               <NewChannelDialog onCreate={(v) => createChannel.mutate(v)} pending={createChannel.isPending} />
             </Dialog>
+            <Dialog open={editChannelOpen} onOpenChange={setEditChannelOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="icon" title="Edit channel" disabled={!currentChannel}>
+                  <Pencil />
+                </Button>
+              </DialogTrigger>
+              {currentChannel && (
+                <EditChannelDialog
+                  channel={currentChannel}
+                  onSave={(v) => editChannel.mutate(v)}
+                  pending={editChannel.isPending}
+                />
+              )}
+            </Dialog>
+            <Dialog open={deleteChannelOpen} onOpenChange={setDeleteChannelOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="icon" title="Delete channel" disabled={!currentChannel}>
+                  <Trash2 />
+                </Button>
+              </DialogTrigger>
+              {currentChannel && (
+                <DialogContent className="max-w-sm">
+                  <DialogHeader>
+                    <DialogTitle>Delete "{currentChannel.name}"?</DialogTitle>
+                  </DialogHeader>
+                  <p className="text-sm text-muted-foreground">
+                    This permanently removes the channel and all of its schedules. Videos are kept.
+                  </p>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setDeleteChannelOpen(false)}>Cancel</Button>
+                    <Button
+                      variant="destructive"
+                      onClick={() => deleteChannel.mutate()}
+                      disabled={deleteChannel.isPending}
+                    >
+                      Delete
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              )}
+            </Dialog>
           </div>
         </div>
         <div>
@@ -425,19 +466,41 @@ function SchedulesPage() {
         </div>
         <div>
           <Label className="text-xs">Day start</Label>
-          <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-[120px]" />
+          <Input
+            type="time"
+            value={startTime}
+            onChange={(e) => {
+              setStartTime(e.target.value);
+              setStartTimeTouched(true);
+            }}
+            className="w-[120px]"
+          />
         </div>
         <div className="flex items-center gap-2 pb-1">
           <Switch checked={autopilot} onCheckedChange={setAutopilot} id="autopilot" />
           <Label htmlFor="autopilot" className="text-sm">Autopilot</Label>
         </div>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {prevEnd && (
+            <Badge variant="outline" className="tabular-nums">
+              Prev ends {format(parseISO(prevEnd), "MMM d HH:mm")}
+            </Badge>
+          )}
           <Badge variant="secondary">{computed.length} items · {fmtDur(totalMs)}</Badge>
+          <Button
+            variant="outline"
+            onClick={() => createMut.mutate()}
+            disabled={createMut.isPending || !channelId}
+            title="Create a new schedule starting at the previous schedule's end"
+          >
+            <CalendarPlus /> Create
+          </Button>
           <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !channelId}>
             <Save /> Save
           </Button>
         </div>
       </div>
+
 
       <div className="rounded-md border">
         <div className="flex items-center justify-between border-b p-2">
