@@ -2,13 +2,11 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { mistAddDirectSource, publicHlsUrl } from "@/lib/mist/client.server";
 import { getMistConfig, isMistConfigured } from "@/lib/mist/config.server";
 import {
-  buildPlsContent,
-  pushPlsToVps,
-  scheduleItemsToPlsLines,
-} from "@/lib/mist/playlist.server";
+  executePushScheduleToMist,
+  recordMistPushStatus,
+} from "@/lib/mist/push-schedule.server";
 import { parseMegaSourceRef, signMegaObjectKey } from "@/lib/mist/sign-mega.server";
 
 const pushInput = z.object({
@@ -54,92 +52,50 @@ export const pushScheduleToMist = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(pushInput)
   .handler(async ({ data, context }) => {
-    const { data: schedule, error: schedErr } = await context.supabase
+    const { data: schedule } = await context.supabase
       .from("schedules")
-      .select("id, channel_id, schedule_date, owner_id")
+      .select("channel_id")
       .eq("id", data.scheduleId)
       .single();
 
-    if (schedErr || !schedule) throw new Error("Schedule not found");
-    if (schedule.owner_id !== context.userId) throw new Error("Forbidden");
+    try {
+      const result = await executePushScheduleToMist(
+        context.supabase,
+        context.userId,
+        data.scheduleId,
+        {
+          insertGaps: data.insertGaps,
+          gapMs: data.gapMs,
+          allowDirectUrlSmoke: data.allowDirectUrlSmoke,
+        },
+      );
 
-    const { data: channel, error: chErr } = await context.supabase
-      .from("channels")
-      .select("id, name, slug, mist_stream_name, owner_id")
-      .eq("id", schedule.channel_id)
-      .single();
-
-    if (chErr || !channel) throw new Error("Channel not found");
-
-    const streamName = (channel.mist_stream_name ?? channel.slug ?? "tv1").toLowerCase();
-
-    const { data: items, error: itemsErr } = await context.supabase
-      .from("schedule_items")
-      .select(
-        `
-        position,
-        duration_ms,
-        transition_ms,
-        source_snapshot,
-        video:videos ( id, title, source_type, source_ref )
-      `,
-      )
-      .eq("schedule_id", data.scheduleId)
-      .order("position");
-
-    if (itemsErr) throw itemsErr;
-    if (!items?.length) throw new Error("Schedule has no items");
-
-    const rows = items.map((row) => ({
-      position: row.position,
-      duration_ms: row.duration_ms,
-      transition_ms: row.transition_ms,
-      source_snapshot: (row.source_snapshot ?? {}) as Record<string, unknown>,
-      video: row.video as {
-        id: string;
-        title: string;
-        source_type: string;
-        source_ref: string;
-      } | null,
-    }));
-
-    if (data.allowDirectUrlSmoke && rows.length === 1 && rows[0].video) {
-      const v = rows[0].video;
-      let sourceUrl: string | null = null;
-      if (v.source_type === "direct_url") {
-        sourceUrl = v.source_ref;
-      } else if (v.source_type === "mega_s3") {
-        const { key } = parseMegaSourceRef(v.source_ref);
-        const signed = await signMegaObjectKey(key);
-        sourceUrl = signed.url;
+      if (schedule?.channel_id) {
+        await recordMistPushStatus(context.supabase, schedule.channel_id, context.userId, {
+          success: true,
+          scheduleId: data.scheduleId,
+        });
       }
-      if (sourceUrl) {
-        const mistResponse = await mistAddDirectSource(streamName, sourceUrl);
-        return {
-          mode: "direct" as const,
-          streamName,
-          hlsUrl: publicHlsUrl(streamName),
-          mistResponse: JSON.stringify(mistResponse),
-          itemCount: 1,
-        };
+
+      return {
+        mode: result.mode,
+        streamName: result.streamName,
+        hlsUrl: result.hlsUrl,
+        plsPreview: result.plsPreview,
+        itemCount: result.itemCount,
+        syncResult: result.syncResult,
+        mistResponse: result.mistResponse,
+      };
+    } catch (err) {
+      if (schedule?.channel_id) {
+        await recordMistPushStatus(context.supabase, schedule.channel_id, context.userId, {
+          success: false,
+          scheduleId: data.scheduleId,
+          errorMessage: err instanceof Error ? err.message : "Mist push failed",
+        });
       }
+      throw err;
     }
-
-    const plsLines = scheduleItemsToPlsLines(rows, {
-      insertGaps: data.insertGaps,
-      gapMs: data.gapMs,
-    });
-    const pls = buildPlsContent(plsLines);
-    const syncResult = await pushPlsToVps(streamName, pls);
-
-    return {
-      mode: "playlist" as const,
-      streamName,
-      hlsUrl: publicHlsUrl(streamName),
-      plsPreview: pls.split("\n").slice(0, 30).join("\n"),
-      itemCount: plsLines.length,
-      syncResult: typeof syncResult.body === "string" ? syncResult.body : JSON.stringify(syncResult.body),
-    };
   });
 
 export const createSmokeSchedule = createServerFn({ method: "POST" })

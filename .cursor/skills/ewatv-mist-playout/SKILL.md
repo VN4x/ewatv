@@ -1,55 +1,75 @@
 ---
 name: ewatv-mist-playout
-description: Implement or debug ewatv MistServer VPS playout, pushScheduleToMist, playlist-sync, and HLS player. Use when working on deploy/mist, playout page, or Mist API integration.
+description: MistServer VPS playout, daily .pls push, playlist-sync, HLS URLs, gaps, and custom hls.js player. Use for deploy/mist, playout UI, pushScheduleToMist, and Mist debugging.
 ---
 
-# ewatv Mist playout skill
+# ewatv Mist playout
 
-## When to use
+## Split of responsibilities
 
-- Adding playout features, fixing Mist push failures, or extending `deploy/mist`.
-- Smoke-testing schedule → `.pls` → HLS.
+| Component | Role |
+|-----------|------|
+| **MistServer** (VPS) | 24/7 encode/concat; outputs HLS `/hls/{stream}/index.m3u8` |
+| **playlist-sync** | Writes `.pls` on VPS; calls Mist `addstream` |
+| **Lovable app** | Schedules DB, **custom player** (hls.js), overlays, now/next from Postgres |
+| **04:00 cron** | Push **today** to Mist; weekly fill in DB |
 
-## Workflow
+**Do not** use Mist’s built-in HTML/Meta-Player as the product viewer.
 
-1. **VPS:** `cd deploy/mist && cp .env.example .env && docker compose up -d --build`
-2. Create gap asset: `ffmpeg ... -t 1.5 media/gap-black.mp4` (see `deploy/mist/README.md`)
-3. **Lovable secrets:** match `MIST_API_*`, `MIST_PLAYLIST_SYNC_*`, `VITE_MIST_HLS_BASE`
-4. **App:** `/playout` → Ensure channel → Create smoke schedule → Push to Mist
+## Ports (defaults)
 
-## Key files
+- Mist API: **4242** (`/api2`, JSON `command=`)
+- Mist HTTP/HLS: **8080** — keep `/hls/{stream}/` prefix behind Caddy
+- playlist-sync: **8787** (internal); public via Caddy `/playlist-sync/`
 
-| File | Role |
-|------|------|
-| `deploy/mist/docker-compose.yml` | Mist + playlist-sync + Caddy |
-| `deploy/mist/playlist-sync/server.mjs` | Writes `.pls`, calls `addstream` |
-| `src/lib/mist/playlist.server.ts` | Build `.pls`, gaps, VPS POST |
-| `src/lib/mist/client.server.ts` | Mist API auth + direct source |
-| `src/lib/api/mist.functions.ts` | `pushScheduleToMist`, `createSmokeSchedule` |
+## Daily push (not weekly on Mist)
 
-## Mist API auth
+- `pushScheduleToMist` / `persistScheduleAndPush` → builds `.pls` for **one schedule day**
+- `autoPushIfNeeded` only pushes when `schedule_date` is **today** (air TZ)
+- **04:00** cron runs `pushTodayAirScheduleForChannel` after weekly autopilot fill
 
-```text
-password_hash = MD5( MD5(plain_password) + challenge )
+## Gaps (1500ms black)
+
+- DB: `schedule_items` with `source_snapshot.kind === "gap"`
+- VPS: `/media/gap-black.mp4`
+- Logo: **player-side** (visible during gaps); not burned into Mist
+
+## Server functions (do not break contracts)
+
+| Function | File |
+|----------|------|
+| `pushScheduleToMist` | `src/lib/api/mist.functions.ts` |
+| `saveScheduleAndPush` | `src/lib/api/schedule.functions.ts` |
+| `executePushScheduleToMist` | `src/lib/mist/push-schedule.server.ts` |
+| `runAutopilotJobs` | `src/lib/schedule/autopilot-cron.server.ts` |
+
+## `.pls` rules
+
+- **Local paths only** in `.pls` (`/media/...`, `/playlists/...`)
+- Remote HTTPS: single-item **direct smoke** via `addstream` URL, not weekly `.pls`
+- `insertGaps: true` on push inserts black between videos in `.pls`
+
+## Player (app-side)
+
+- **hls.js:** `lowLatencyMode: true`, `backBufferLength: 30`, `maxBufferLength: 30`
+- **Env:** `VITE_MIST_HLS_BASE` + stream name from `channels.mist_stream_name` or `slug`
+- **nowPlaying** server fn (to implement in Lovable): DB schedule + wall clock, not Mist UI
+
+## VPS layout
+
 ```
-
-Send `authorize` with empty password first to get `challenge`, then call with hash.
-
-## Gap items
-
-DB row: `video_id: null`, `source_snapshot: { kind: "gap", duration_ms: 1500, show_logo: true }`
-
-`.pls` line: `/media/gap-black.mp4` (must exist on VPS).
+deploy/mist/
+  docker-compose.yml
+  media/gap-black.mp4
+  media/videos/{uuid}.mp4
+  playlists/{stream}.pls
+```
 
 ## Troubleshooting
 
 | Symptom | Check |
 |---------|--------|
-| Push 401 | `MIST_PLAYLIST_SYNC_TOKEN` matches VPS `.env` |
-| Empty HLS | Mist UI :4242, stream `always_on`, media paths exist |
-| RLS on schedule | User owns `schedules` / `schedule_items` |
-| Direct smoke fails | `MEGA_S3_*` or use `direct_url` video |
-
-## Tests without VPS
-
-Use **Direct URL smoke** toggle on `/playout` with `MIST_API_URL` pointing at reachable Mist (requires `MIST_API_PASSWORD`).
+| No HLS | Mist :4242, stream `always_on`, Caddy `/hls` not stripped |
+| Push 401 | `MIST_PLAYLIST_SYNC_TOKEN` |
+| Empty playout | **Playout active** + today's schedule has items |
+| Early viewers wrong lineup | Cron at **04:00** Helsinki, not 05:00+ |

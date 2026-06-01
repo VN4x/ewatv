@@ -1,11 +1,17 @@
 ---
-description: ewatv Mist playout, VPS compose, and schedule push conventions
+description: ewatv Mist playout, daily 04:00 push, VPS compose, and custom hls.js player
 globs:
   - deploy/mist/**
+  - deploy/cron/**
   - src/lib/mist/**
   - src/lib/api/mist.functions.ts
+  - src/lib/api/playout.functions.ts
+  - src/lib/api/schedule.functions.ts
+  - src/lib/api/autopilot.functions.ts
   - src/lib/schedule/**
-  - src/routes/_authenticated/playout.tsx
+  - src/components/playout/**
+  - src/routes/_authenticated/playout*.tsx
+  - src/routes/**/tv/**
 alwaysApply: false
 ---
 
@@ -13,31 +19,34 @@ alwaysApply: false
 
 ## Architecture
 
-- **Control plane:** TanStack Start + Supabase (`collections`, `schedules`, `schedule_items`, `channels`).
-- **Playout plane:** MistServer on VPS (`deploy/mist`), Caddy edge, `playlist-sync` writes `.pls` and calls `addstream`.
+- **Control plane:** TanStack Start + Supabase.
+- **Playout plane:** MistServer + Caddy on VPS; **custom hls.js player** in app (not Mist Meta-Player).
 
-## Mist ports (defaults)
+## Daily Mist push (not weekly on air)
 
-- API: **4242** (`/api2`, `command=` JSON + challenge auth).
-- HLS: **8080** at `/hls/{stream}/index.m3u8` (do not strip `/hls` in Caddy).
+- **One HLS stream** = **today’s** `.pls` only.
+- **Weekly autopilot** fills 7 days in **Postgres**; each **air date** pushes to Mist when that day is today.
+- **Cron:** **04:00 or earlier** in `AUTOPILOT_TIMEZONE` (`Europe/Helsinki`) — `deploy/cron/README.md`, `0 4 * * *`.
+- Manual **Save** can still push today when `playout_active`.
+
+## Mist ports
+
+- API **4242**; HLS **8080** at `/hls/{stream}/index.m3u8` — do not strip `/hls` in Caddy.
 
 ## Playlist / gaps
 
-- Mist `.pls` only supports **local paths** under `/media` and `/playlists` mounts.
-- **1500ms black gaps:** `schedule_items.source_snapshot.kind === "gap"` → line `/media/gap-black.mp4` in `.pls`. Logo stays **player-side** (`hide_overlay` on videos only), not burned into gap clip.
-- Use `insertGaps: true` on `pushScheduleToMist` to auto-insert gaps between videos when building `.pls`.
+- `.pls` = local VPS paths only.
+- Gaps: `gap-black.mp4` + player-side logo during gaps.
 
-## Server functions
+## Server functions (stable contracts)
 
-- Always `.middleware([requireSupabaseAuth])` on Mist mutations.
-- `pushScheduleToMist` → `pushPlsToVps` → VPS `POST /playlists/{stream}`.
-- `allowDirectUrlSmoke` for single `direct_url` / signed `mega_s3` without VPS media files.
+- `saveScheduleAndPush`, `pushScheduleToMist`, `runAutopilotJobs`, `updateChannelAutopilot`
+- `nowPlaying` in `playout.functions.ts` (Lovable)
 
-## Secrets (Lovable)
+## Channel settings
 
-`MIST_PLAYLIST_SYNC_URL`, `MIST_PLAYLIST_SYNC_TOKEN`, `MIST_API_*`, `VITE_MIST_HLS_BASE`, optional `MEGA_S3_*`.
+- `playout_active`, `autopilot_enabled`, `autopilot_week_days`, Mist push status fields in `channels.settings`.
 
-## Do not
+## Lovable playout task
 
-- Assume remote HTTPS URLs work inside `.pls` files.
-- Use plan.md ports 24241/18784 unless explicitly configured in compose.
+Full prompt: `.cursor/skills/ewatv-lovable-playout-ui/SKILL.md`
