@@ -41,3 +41,9 @@ alwaysApply: false
 
 - Assume remote HTTPS URLs work inside `.pls` files.
 - Use plan.md ports 24241/18784 unless explicitly configured in compose.
+## Auto-push on save
+
+- `saveScheduleAndPush` persists schedule then calls Mist when channel `settings.playout_active` and `schedule_date` is **today** (UTC calendar date).
+- `updateChannelPlayout` toggles playout; `retryPushScheduleToMist` for manual recovery.
+- Status: `channels.settings.last_mist_push_at`, `last_mist_push_error`.
+
