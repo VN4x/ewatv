@@ -33,7 +33,7 @@ Run the dev server in **tmux** for long-lived processes (see Cloud Agent shell d
 | **Hosted Supabase** (Lovable Cloud) | Auth + Postgres + RLS. No `docker-compose` or documented local Supabase CLI workflow in-repo. |
 | **Optional:** Lovable OAuth (`@lovable.dev/cloud-auth-js`) | Google sign-in on `/login`; email/password works without it. |
 
-MistServer, Mega S3, and Caddy from the architecture plan are **out of scope** until implemented.
+MistServer stack: **`deploy/mist/`** (compose + Caddy + playlist-sync). Server fns: `src/lib/api/mist.functions.ts`. Cursor: `.cursor/rules/ewatv-mist.mdc`, skills under `.cursor/skills/`.
 
 ### Lint / tests
 

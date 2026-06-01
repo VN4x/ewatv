@@ -1,0 +1,8 @@
+{
+  "name": "ewatv-playlist-sync",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Writes .pls files on the VPS and reloads MistServer streams",
+  "main": "server.mjs"
+}

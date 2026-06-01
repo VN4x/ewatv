@@ -1,0 +1,43 @@
+---
+description: ewatv Mist playout, VPS compose, and schedule push conventions
+globs:
+  - deploy/mist/**
+  - src/lib/mist/**
+  - src/lib/api/mist.functions.ts
+  - src/lib/schedule/**
+  - src/routes/_authenticated/playout.tsx
+alwaysApply: false
+---
+
+# ewatv Mist / playout rules
+
+## Architecture
+
+- **Control plane:** TanStack Start + Supabase (`collections`, `schedules`, `schedule_items`, `channels`).
+- **Playout plane:** MistServer on VPS (`deploy/mist`), Caddy edge, `playlist-sync` writes `.pls` and calls `addstream`.
+
+## Mist ports (defaults)
+
+- API: **4242** (`/api2`, `command=` JSON + challenge auth).
+- HLS: **8080** at `/hls/{stream}/index.m3u8` (do not strip `/hls` in Caddy).
+
+## Playlist / gaps
+
+- Mist `.pls` only supports **local paths** under `/media` and `/playlists` mounts.
+- **1500ms black gaps:** `schedule_items.source_snapshot.kind === "gap"` → line `/media/gap-black.mp4` in `.pls`. Logo stays **player-side** (`hide_overlay` on videos only), not burned into gap clip.
+- Use `insertGaps: true` on `pushScheduleToMist` to auto-insert gaps between videos when building `.pls`.
+
+## Server functions
+
+- Always `.middleware([requireSupabaseAuth])` on Mist mutations.
+- `pushScheduleToMist` → `pushPlsToVps` → VPS `POST /playlists/{stream}`.
+- `allowDirectUrlSmoke` for single `direct_url` / signed `mega_s3` without VPS media files.
+
+## Secrets (Lovable)
+
+`MIST_PLAYLIST_SYNC_URL`, `MIST_PLAYLIST_SYNC_TOKEN`, `MIST_API_*`, `VITE_MIST_HLS_BASE`, optional `MEGA_S3_*`.
+
+## Do not
+
+- Assume remote HTTPS URLs work inside `.pls` files.
+- Use plan.md ports 24241/18784 unless explicitly configured in compose.
