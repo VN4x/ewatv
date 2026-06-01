@@ -440,8 +440,37 @@ function VideoDialog({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>Length (seconds)</Label>
-            <Input type="number" min={0} value={lengthSec} onChange={(e) => setLengthSec(Number(e.target.value))} />
+            <Label>Length (hh:mm:ss, mm:ss, or seconds)</Label>
+            <div className="flex gap-1.5">
+              <Input
+                value={lengthSec ? formatLen(lengthSec) : ""}
+                onChange={(e) => setLengthSec(parseLen(e.target.value))}
+                placeholder="0:00"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                title="Auto-detect from URL"
+                onClick={async () => {
+                  if (!sourceRef.trim()) { toast.error("Enter URL first"); return; }
+                  if (sourceType !== "direct_url" && sourceType !== "mega_s3") {
+                    toast.error("Auto-detect only works for direct/Mega URLs");
+                    return;
+                  }
+                  try {
+                    toast.info("Probing…");
+                    const sec = await probeDuration(sourceRef.trim());
+                    setLengthSec(sec);
+                    toast.success(`Detected ${formatLen(sec)}`);
+                  } catch (e) {
+                    toast.error((e as Error).message);
+                  }
+                }}
+              >
+                <Wand2 className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label>{sourceType === "mega_s3" ? "S3 key (bucket/key)" : "URL"}</Label>
