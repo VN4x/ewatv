@@ -198,6 +198,7 @@ function CollectionsPage() {
                   </td>
                   <td className="px-3 py-2 text-right">
                     <div className="flex justify-end gap-1">
+                      <TestPlayButton video={v} />
                       <VideoDialog
                         collections={collections}
                         existing={v}
