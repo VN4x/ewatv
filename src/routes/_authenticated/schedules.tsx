@@ -710,24 +710,139 @@ function VideoPickerDialog({ onAdd }: { onAdd: (v: Video[]) => void }) {
   );
 }
 
-function NewChannelDialog({ onCreate, pending }: { onCreate: (v: { name: string; slug: string }) => void; pending: boolean }) {
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
+function ChannelFormDialog({
+  mode,
+  initial,
+  onSubmit,
+  pending,
+  otherSlugs,
+}: {
+  mode: "create" | "edit";
+  initial?: { name: string; slug: string };
+  onSubmit: (v: { name: string; slug: string }) => void;
+  pending: boolean;
+  otherSlugs: string[];
+}) {
+  const [name, setName] = useState(initial?.name ?? "");
+  const [slug, setSlug] = useState(initial?.slug ?? "");
+  const [touchedSlug, setTouchedSlug] = useState(mode === "edit");
+
+  const nameRes = nameSchema.safeParse(name);
+  const slugRes = slugSchema.safeParse(slug);
+  const slugTaken = !!slug && otherSlugs.includes(slug);
+  const nameError = name && !nameRes.success ? nameRes.error.issues[0]?.message : null;
+  const slugError = slug
+    ? !slugRes.success
+      ? slugRes.error.issues[0]?.message
+      : slugTaken
+        ? "This slug is already used by another channel"
+        : null
+    : null;
+  const canSubmit = nameRes.success && slugRes.success && !slugTaken && !pending;
+
   return (
     <DialogContent className="max-w-sm">
-      <DialogHeader><DialogTitle>New channel</DialogTitle></DialogHeader>
+      <DialogHeader>
+        <DialogTitle>{mode === "create" ? "New channel" : "Rename channel"}</DialogTitle>
+      </DialogHeader>
       <div className="space-y-3">
-        <div>
+        <div className="space-y-1">
           <Label className="text-xs">Name</Label>
-          <Input value={name} onChange={(e) => { setName(e.target.value); if (!slug) setSlug(toSlug(e.target.value)); }} />
+          <Input
+            value={name}
+            maxLength={120}
+            onChange={(e) => {
+              const v = e.target.value;
+              setName(v);
+              if (!touchedSlug) setSlug(toSlug(v));
+            }}
+            aria-invalid={!!nameError}
+          />
+          {nameError && <p className="text-xs text-destructive">{nameError}</p>}
         </div>
-        <div>
+        <div className="space-y-1">
           <Label className="text-xs">Slug (a-z, 0-9, -)</Label>
-          <Input value={slug} onChange={(e) => setSlug(toSlug(e.target.value))} />
+          <Input
+            value={slug}
+            maxLength={64}
+            onChange={(e) => {
+              setTouchedSlug(true);
+              setSlug(toSlug(e.target.value));
+            }}
+            aria-invalid={!!slugError}
+          />
+          {slugError && <p className="text-xs text-destructive">{slugError}</p>}
+          {mode === "edit" && initial && slug !== initial.slug && !slugError && (
+            <p className="text-xs text-muted-foreground">
+              Changing the slug breaks any existing embed URLs for this channel.
+            </p>
+          )}
         </div>
       </div>
       <DialogFooter>
-        <Button disabled={pending || !name || !slug} onClick={() => onCreate({ name, slug })}>Create</Button>
+        <Button disabled={!canSubmit} onClick={() => onSubmit({ name: name.trim(), slug })}>
+          {mode === "create" ? "Create" : "Save"}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+function DeleteChannelDialog({
+  channelName,
+  scheduleCount,
+  onConfirm,
+  onCancel,
+  pending,
+}: {
+  channelName: string;
+  scheduleCount: number | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+  pending: boolean;
+}) {
+  const [confirmText, setConfirmText] = useState("");
+  const hasSchedules = (scheduleCount ?? 0) > 0;
+  const requiredText = channelName;
+  const canDelete = confirmText.trim() === requiredText && !pending;
+
+  return (
+    <DialogContent className="max-w-md">
+      <DialogHeader>
+        <DialogTitle>Delete "{channelName}"?</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-3 text-sm">
+        <p className="text-muted-foreground">
+          This permanently removes the channel
+          {scheduleCount === null
+            ? "…"
+            : hasSchedules
+              ? ` and its ${scheduleCount} schedule${scheduleCount === 1 ? "" : "s"} (including every scheduled item).`
+              : "."}
+          {" "}Videos and collections are kept.
+        </p>
+        {hasSchedules && (
+          <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
+            Warning: any embed currently playing this channel will stop working.
+          </div>
+        )}
+        <div className="space-y-1">
+          <Label className="text-xs">
+            Type <span className="font-mono font-semibold">{requiredText}</span> to confirm
+          </Label>
+          <Input
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder={requiredText}
+            autoFocus
+          />
+        </div>
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={onCancel} disabled={pending}>Cancel</Button>
+        <Button variant="destructive" onClick={onConfirm} disabled={!canDelete}>
+          {pending ? "Deleting…" : "Delete channel"}
+        </Button>
       </DialogFooter>
     </DialogContent>
   );
