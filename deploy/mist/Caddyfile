@@ -1,0 +1,27 @@
+# Local / edge reverse proxy for Mist + playlist-sync.
+# Production: set MIST_DOMAIN and use the TLS block in README.
+
+:80 {
+	handle_path /api/* {
+		reverse_proxy mist:4242
+	}
+
+	handle_path /playlist-sync/* {
+		uri strip_prefix /playlist-sync
+		reverse_proxy playlist-sync:8787
+	}
+
+	@hls path /hls/*
+	handle @hls {
+		reverse_proxy mist:8080
+	}
+
+	@cmaf path /cmaf/*
+	handle @cmaf {
+		reverse_proxy mist:8080
+	}
+
+	handle {
+		reverse_proxy mist:8080
+	}
+}
