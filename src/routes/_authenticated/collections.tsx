@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
+import { probeVideoDuration } from "@/lib/api/probe.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -364,6 +366,8 @@ function VideoDialog({
   trigger: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const probeServer = useServerFn(probeVideoDuration);
+  const [probing, setProbing] = useState(false);
   const [title, setTitle] = useState(existing?.title ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
   const [lengthSec, setLengthSec] = useState(existing?.length_sec ?? 0);
@@ -452,19 +456,27 @@ function VideoDialog({
                 variant="outline"
                 size="icon"
                 title="Auto-detect from URL"
+                disabled={probing}
                 onClick={async () => {
-                  if (!sourceRef.trim()) { toast.error("Enter URL first"); return; }
-                  if (sourceType !== "direct_url" && sourceType !== "mega_s3") {
-                    toast.error("Auto-detect only works for direct/Mega URLs");
-                    return;
-                  }
+                  const ref = sourceRef.trim();
+                  if (!ref) { toast.error("Enter URL first"); return; }
+                  setProbing(true);
                   try {
                     toast.info("Probing…");
-                    const sec = await probeDuration(sourceRef.trim());
+                    let sec: number;
+                    if (sourceType === "direct_url" || sourceType === "mega_s3") {
+                      sec = await probeDuration(ref);
+                    } else {
+                      const res = await probeServer({ data: { sourceType, sourceRef: ref } });
+                      sec = res.length_sec;
+                      if (res.title && !title.trim()) setTitle(res.title);
+                    }
                     setLengthSec(sec);
                     toast.success(`Detected ${formatLen(sec)}`);
                   } catch (e) {
                     toast.error((e as Error).message);
+                  } finally {
+                    setProbing(false);
                   }
                 }}
               >
