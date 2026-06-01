@@ -92,11 +92,14 @@ function SchedulesPage() {
   const qc = useQueryClient();
   const [date, setDate] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
   const [startTime, setStartTime] = useState<string>("00:00");
+  const [startTimeTouched, setStartTimeTouched] = useState(false);
   const [channelId, setChannelId] = useState<string | null>(null);
   const [autopilot, setAutopilot] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [newChannelOpen, setNewChannelOpen] = useState(false);
+  const [editChannelOpen, setEditChannelOpen] = useState(false);
+  const [deleteChannelOpen, setDeleteChannelOpen] = useState(false);
 
   const { data: channels = [] } = useQuery({
     queryKey: ["channels"],
