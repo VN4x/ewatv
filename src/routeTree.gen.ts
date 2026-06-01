@@ -16,6 +16,7 @@ import { Route as PlayoutChannelSlugRouteImport } from './routes/playout.$channe
 import { Route as AuthenticatedSchedulesRouteImport } from './routes/_authenticated/schedules'
 import { Route as AuthenticatedPlayoutRouteImport } from './routes/_authenticated/playout'
 import { Route as AuthenticatedCollectionsRouteImport } from './routes/_authenticated/collections'
+import { Route as ApiCronAutopilotRouteImport } from './routes/api/cron/autopilot'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -52,6 +53,11 @@ const AuthenticatedCollectionsRoute =
     path: '/collections',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const ApiCronAutopilotRoute = ApiCronAutopilotRouteImport.update({
+  id: '/api/cron/autopilot',
+  path: '/api/cron/autopilot',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -60,6 +66,7 @@ export interface FileRoutesByFullPath {
   '/playout': typeof AuthenticatedPlayoutRoute
   '/schedules': typeof AuthenticatedSchedulesRoute
   '/playout/$channelSlug': typeof PlayoutChannelSlugRoute
+  '/api/cron/autopilot': typeof ApiCronAutopilotRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -68,6 +75,7 @@ export interface FileRoutesByTo {
   '/playout': typeof AuthenticatedPlayoutRoute
   '/schedules': typeof AuthenticatedSchedulesRoute
   '/playout/$channelSlug': typeof PlayoutChannelSlugRoute
+  '/api/cron/autopilot': typeof ApiCronAutopilotRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -78,6 +86,7 @@ export interface FileRoutesById {
   '/_authenticated/playout': typeof AuthenticatedPlayoutRoute
   '/_authenticated/schedules': typeof AuthenticatedSchedulesRoute
   '/playout/$channelSlug': typeof PlayoutChannelSlugRoute
+  '/api/cron/autopilot': typeof ApiCronAutopilotRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -88,6 +97,7 @@ export interface FileRouteTypes {
     | '/playout'
     | '/schedules'
     | '/playout/$channelSlug'
+    | '/api/cron/autopilot'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -96,6 +106,7 @@ export interface FileRouteTypes {
     | '/playout'
     | '/schedules'
     | '/playout/$channelSlug'
+    | '/api/cron/autopilot'
   id:
     | '__root__'
     | '/'
@@ -105,6 +116,7 @@ export interface FileRouteTypes {
     | '/_authenticated/playout'
     | '/_authenticated/schedules'
     | '/playout/$channelSlug'
+    | '/api/cron/autopilot'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -112,6 +124,7 @@ export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   LoginRoute: typeof LoginRoute
   PlayoutChannelSlugRoute: typeof PlayoutChannelSlugRoute
+  ApiCronAutopilotRoute: typeof ApiCronAutopilotRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -165,6 +178,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCollectionsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/api/cron/autopilot': {
+      id: '/api/cron/autopilot'
+      path: '/api/cron/autopilot'
+      fullPath: '/api/cron/autopilot'
+      preLoaderRoute: typeof ApiCronAutopilotRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -189,7 +209,18 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   LoginRoute: LoginRoute,
   PlayoutChannelSlugRoute: PlayoutChannelSlugRoute,
+  ApiCronAutopilotRoute: ApiCronAutopilotRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
