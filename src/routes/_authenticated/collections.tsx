@@ -14,7 +14,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Folder, FolderPlus, Plus, Search, Trash2, Pencil, ChevronRight, ChevronDown } from "lucide-react";
+import { Folder, FolderPlus, Plus, Search, Trash2, Pencil, ChevronRight, ChevronDown, Play, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
