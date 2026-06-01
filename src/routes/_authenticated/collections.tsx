@@ -456,19 +456,27 @@ function VideoDialog({
                 variant="outline"
                 size="icon"
                 title="Auto-detect from URL"
+                disabled={probing}
                 onClick={async () => {
-                  if (!sourceRef.trim()) { toast.error("Enter URL first"); return; }
-                  if (sourceType !== "direct_url" && sourceType !== "mega_s3") {
-                    toast.error("Auto-detect only works for direct/Mega URLs");
-                    return;
-                  }
+                  const ref = sourceRef.trim();
+                  if (!ref) { toast.error("Enter URL first"); return; }
+                  setProbing(true);
                   try {
                     toast.info("Probing…");
-                    const sec = await probeDuration(sourceRef.trim());
+                    let sec: number;
+                    if (sourceType === "direct_url" || sourceType === "mega_s3") {
+                      sec = await probeDuration(ref);
+                    } else {
+                      const res = await probeServer({ data: { sourceType, sourceRef: ref } });
+                      sec = res.length_sec;
+                      if (res.title && !title.trim()) setTitle(res.title);
+                    }
                     setLengthSec(sec);
                     toast.success(`Detected ${formatLen(sec)}`);
                   } catch (e) {
                     toast.error((e as Error).message);
+                  } finally {
+                    setProbing(false);
                   }
                 }}
               >
