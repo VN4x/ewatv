@@ -413,7 +413,54 @@ function SchedulesPage() {
               <DialogTrigger asChild>
                 <Button variant="outline" size="icon" title="New channel"><Plus /></Button>
               </DialogTrigger>
-              <NewChannelDialog onCreate={(v) => createChannel.mutate(v)} pending={createChannel.isPending} />
+              <ChannelFormDialog
+                mode="create"
+                onSubmit={(v) => createChannel.mutate(v)}
+                pending={createChannel.isPending}
+                otherSlugs={channels.map((c) => c.slug)}
+              />
+            </Dialog>
+            <Dialog open={editChannelOpen} onOpenChange={setEditChannelOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  title="Rename channel"
+                  disabled={!selectedChannel}
+                >
+                  <Pencil />
+                </Button>
+              </DialogTrigger>
+              {selectedChannel && (
+                <ChannelFormDialog
+                  mode="edit"
+                  initial={{ name: selectedChannel.name, slug: selectedChannel.slug }}
+                  onSubmit={(v) => editChannel.mutate(v)}
+                  pending={editChannel.isPending}
+                  otherSlugs={channels.filter((c) => c.id !== selectedChannel.id).map((c) => c.slug)}
+                />
+              )}
+            </Dialog>
+            <Dialog open={deleteChannelOpen} onOpenChange={setDeleteChannelOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  title="Delete channel"
+                  disabled={!selectedChannel}
+                >
+                  <Trash2 />
+                </Button>
+              </DialogTrigger>
+              {selectedChannel && (
+                <DeleteChannelDialog
+                  channelName={selectedChannel.name}
+                  scheduleCount={channelScheduleCount ?? null}
+                  onConfirm={() => deleteChannel.mutate()}
+                  onCancel={() => setDeleteChannelOpen(false)}
+                  pending={deleteChannel.isPending}
+                />
+              )}
             </Dialog>
           </div>
         </div>
