@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PlayoutChannelSlugRouteImport } from './routes/playout.$channelSlug'
 import { Route as AuthenticatedSchedulesRouteImport } from './routes/_authenticated/schedules'
 import { Route as AuthenticatedPlayoutRouteImport } from './routes/_authenticated/playout'
 import { Route as AuthenticatedCollectionsRouteImport } from './routes/_authenticated/collections'
@@ -28,6 +29,11 @@ const AuthenticatedRoute = AuthenticatedRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlayoutChannelSlugRoute = PlayoutChannelSlugRouteImport.update({
+  id: '/playout/$channelSlug',
+  path: '/playout/$channelSlug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedSchedulesRoute = AuthenticatedSchedulesRouteImport.update({
@@ -53,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/collections': typeof AuthenticatedCollectionsRoute
   '/playout': typeof AuthenticatedPlayoutRoute
   '/schedules': typeof AuthenticatedSchedulesRoute
+  '/playout/$channelSlug': typeof PlayoutChannelSlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/collections': typeof AuthenticatedCollectionsRoute
   '/playout': typeof AuthenticatedPlayoutRoute
   '/schedules': typeof AuthenticatedSchedulesRoute
+  '/playout/$channelSlug': typeof PlayoutChannelSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -69,12 +77,25 @@ export interface FileRoutesById {
   '/_authenticated/collections': typeof AuthenticatedCollectionsRoute
   '/_authenticated/playout': typeof AuthenticatedPlayoutRoute
   '/_authenticated/schedules': typeof AuthenticatedSchedulesRoute
+  '/playout/$channelSlug': typeof PlayoutChannelSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/collections' | '/playout' | '/schedules'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/collections'
+    | '/playout'
+    | '/schedules'
+    | '/playout/$channelSlug'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/collections' | '/playout' | '/schedules'
+  to:
+    | '/'
+    | '/login'
+    | '/collections'
+    | '/playout'
+    | '/schedules'
+    | '/playout/$channelSlug'
   id:
     | '__root__'
     | '/'
@@ -83,12 +104,14 @@ export interface FileRouteTypes {
     | '/_authenticated/collections'
     | '/_authenticated/playout'
     | '/_authenticated/schedules'
+    | '/playout/$channelSlug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   LoginRoute: typeof LoginRoute
+  PlayoutChannelSlugRoute: typeof PlayoutChannelSlugRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -112,6 +135,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/playout/$channelSlug': {
+      id: '/playout/$channelSlug'
+      path: '/playout/$channelSlug'
+      fullPath: '/playout/$channelSlug'
+      preLoaderRoute: typeof PlayoutChannelSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/schedules': {
@@ -158,7 +188,18 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   LoginRoute: LoginRoute,
+  PlayoutChannelSlugRoute: PlayoutChannelSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
