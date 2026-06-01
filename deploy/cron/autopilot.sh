@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Example cron: weekly horizon refresh + push today.
 # Example cron: daily autopilot (generate tomorrow + push today).
 # Install on VPS or use GitHub Actions scheduled workflow.
 #

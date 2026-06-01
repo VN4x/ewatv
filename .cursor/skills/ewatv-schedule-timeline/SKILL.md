@@ -41,11 +41,11 @@ next_start = prev_start + duration_ms + transition_ms
 Stage in `playlists_import` table (if added) or parse client-side → create `videos` + `schedule_items`.
 
 Supported formats per plan: m3u, txt, csv, markdown.
-## Autopilot cron (milestone 2)
+## Autopilot (channel-level, weekly)
 
-- **Nightly:** `POST /api/cron/autopilot` with `Authorization: Bearer $AUTOPILOT_CRON_SECRET`
-- **Jobs:** generate **tomorrow** for `autopilot=true` (empty items only); **push today** if `playout_active`
-- **Manual:** `/schedules` → **Run autopilot** (requires Autopilot toggle on that day)
-- **TZ:** `AUTOPILOT_TIMEZONE` (default `Europe/Helsinki`)
-- Script: `deploy/cron/autopilot.sh`
+- **Toggle:** `channels.settings.autopilot_enabled` — stays on until user turns off (`updateChannelAutopilot`)
+- **Horizon:** rolling **7 days** (today … today+6), `AUTOPILOT_WEEK_DAYS` env override
+- **Cron:** `POST /api/cron/autopilot` — fills **empty** days only (won't overwrite manual schedules)
+- **Push:** today's air date still auto-pushes when `playout_active`
+- **UI:** `/schedules` → Autopilot weekly switch; **Run autopilot** = refresh empty week days
 

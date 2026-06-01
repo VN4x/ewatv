@@ -48,7 +48,7 @@ import {
   saveScheduleAndPush,
   updateChannelPlayout,
 } from "@/lib/api/schedule.functions";
-import { runAutopilotNow } from "@/lib/api/autopilot.functions";
+import { runAutopilotNow, updateChannelAutopilot } from "@/lib/api/autopilot.functions";
 
 export const Route = createFileRoute("/_authenticated/schedules")({
   head: () => ({ meta: [{ title: "Schedules — ewatv" }] }),
@@ -124,14 +124,15 @@ function SchedulesPage() {
     () => channels.find((c) => c.id === channelId),
     [channels, channelId],
   );
-  const playoutStatus = useMemo(
+  const channelSettings = useMemo(
     () => parseChannelPlayoutSettings(selectedChannel?.settings ?? null),
     [selectedChannel],
   );
 
   useEffect(() => {
-    setPlayoutActive(playoutStatus.playout_active);
-  }, [playoutStatus.playout_active, channelId]);
+    setPlayoutActive(channelSettings.playout_active);
+    setAutopilot(channelSettings.autopilot_enabled);
+  }, [channelSettings.playout_active, channelSettings.autopilot_enabled, channelId]);
 
 
   // Load existing schedule for chosen channel + date
@@ -169,7 +170,6 @@ function SchedulesPage() {
   useEffect(() => {
     if (loaded) {
       setItems(loaded.items);
-      setAutopilot(loaded.schedule?.autopilot ?? false);
     }
   }, [loaded]);
 
@@ -204,7 +204,7 @@ function SchedulesPage() {
         data: {
           channelId,
           scheduleDate: date,
-          autopilot,
+          autopilot: channelSettings.autopilot_enabled,
           existingScheduleId: loaded?.schedule?.id,
           items: computed.map((it) => ({
             video_id: it.video_id,
@@ -252,16 +252,11 @@ function SchedulesPage() {
   const autopilotMut = useMutation({
     mutationFn: async () => {
       if (!channelId) throw new Error("Pick a channel");
-      return runAutopilotNow({
-        data: { channelId, targetDate: date },
-      });
+      return runAutopilotNow({ data: { channelId } });
     },
     onSuccess: (res) => {
-      toast.success(
-        res.pushed
-          ? `Autopilot: ${res.itemCount} items, pushed to Mist`
-          : `Autopilot: ${res.itemCount} items (${res.pushSkippedReason ?? res.pushError ?? "saved"})`,
-      );
+      const n = res.generated?.length ?? 0;
+      toast.success(`Weekly refresh: ${n} day(s) generated`);
       qc.invalidateQueries({ queryKey: ["schedule", channelId, date] });
       qc.invalidateQueries({ queryKey: ["channels"] });
     },
@@ -361,15 +356,28 @@ function SchedulesPage() {
           />
           <Label htmlFor="playout-active" className="text-sm">Playout active</Label>
         </div>
-        <div className="flex items-center gap-2 pb-1">
-          <Switch checked={autopilot} onCheckedChange={setAutopilot} id="autopilot" />
-          <Label htmlFor="autopilot" className="text-sm">Autopilot</Label>
+        <div className="flex flex-col gap-1 pb-1">
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={autopilot}
+              onCheckedChange={(v) => autopilotToggleMut.mutate(v)}
+              disabled={!channelId || autopilotToggleMut.isPending}
+              id="autopilot"
+            />
+            <Label htmlFor="autopilot" className="text-sm">
+              Autopilot weekly ({channelSettings.autopilot_week_days} days)
+            </Label>
+          </div>
+          <p className="text-xs text-muted-foreground max-w-xs">
+            Stays on until you turn off. Fills empty days in the rolling week; won&apos;t overwrite
+            days you already scheduled.
+          </p>
         </div>
-        {playoutStatus.last_mist_push_at && (
+        {channelSettings.last_mist_push_at && (
           <p className="pb-1 text-xs text-muted-foreground">
-            Last Mist push: {format(parseISO(playoutStatus.last_mist_push_at), "MMM d HH:mm")}
-            {playoutStatus.last_mist_push_error && (
-              <span className="text-destructive"> — {playoutStatus.last_mist_push_error}</span>
+            Last Mist push: {format(parseISO(channelSettings.last_mist_push_at), "MMM d HH:mm")}
+            {channelSettings.last_mist_push_error && (
+              <span className="text-destructive"> — {channelSettings.last_mist_push_error}</span>
             )}
           </p>
         )}
@@ -389,9 +397,9 @@ function SchedulesPage() {
           <Button
             type="button"
             variant="secondary"
-            disabled={autopilotMut.isPending || !channelId || !autopilot}
+            disabled={autopilotMut.isPending || !channelId}
             onClick={() => autopilotMut.mutate()}
-            title="Generate this day from library rules (tomorrow via nightly cron)"
+            title="Regenerate empty days in the 7-day horizon for this channel"
           >
             <Bot className="mr-2 h-4 w-4" />
             Run autopilot

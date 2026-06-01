@@ -1,20 +1,21 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/integrations/supabase/types";
-import { parseChannelPlayoutSettings } from "@/lib/channels/settings";
+import { mergePlayoutIntoSettings, parseChannelPlayoutSettings } from "@/lib/channels/settings";
 import { generateAutopilotScheduleItems } from "@/lib/schedule/autopilot-generate.server";
 import { persistScheduleAndPush } from "@/lib/schedule/persist-schedule.server";
 import {
   getAutopilotTimezone,
+  getAutopilotWeekDays,
   getTodayInAutopilotTz,
-  getTomorrowInAutopilotTz,
+  getWeeklyScheduleDates,
 } from "@/lib/schedule/timezone.server";
 import { autoPushIfNeeded } from "@/lib/mist/push-schedule.server";
 
 export type AutopilotJobResult = {
   timezone: string;
   today: string;
-  tomorrow: string;
+  weekDates: string[];
   generated: Array<{
     scheduleId: string;
     channelId: string;
@@ -31,7 +32,7 @@ export type AutopilotJobResult = {
     reason?: string;
     error?: string;
   }>;
-  skipped: Array<{ scheduleId: string; reason: string }>;
+  skipped: Array<{ channelId: string; scheduleDate?: string; reason: string }>;
 };
 
 async function countScheduleItems(
@@ -45,120 +46,152 @@ async function countScheduleItems(
   return count ?? 0;
 }
 
+async function ensureScheduleRow(
+  supabase: SupabaseClient<Database>,
+  channelId: string,
+  ownerId: string,
+  scheduleDate: string,
+): Promise<string> {
+  const { data: existing } = await supabase
+    .from("schedules")
+    .select("id")
+    .eq("channel_id", channelId)
+    .eq("schedule_date", scheduleDate)
+    .maybeSingle();
+
+  if (existing?.id) {
+    await supabase
+      .from("schedules")
+      .update({ autopilot: true })
+      .eq("id", existing.id);
+    return existing.id;
+  }
+
+  const { data: ins, error } = await supabase
+    .from("schedules")
+    .insert({
+      channel_id: channelId,
+      schedule_date: scheduleDate,
+      owner_id: ownerId,
+      autopilot: true,
+    })
+    .select("id")
+    .single();
+
+  if (error || !ins) throw error ?? new Error("Failed to create schedule row");
+  return ins.id;
+}
+
+export type WeeklyGenerateResult = {
+  generated: AutopilotJobResult["generated"];
+  skipped: AutopilotJobResult["skipped"];
+};
+
+/** Fill empty days in the weekly horizon for one channel (does not overwrite days with items). */
+export async function generateWeeklySchedulesForChannel(
+  supabase: SupabaseClient<Database>,
+  channelId: string,
+  ownerId: string,
+  weekDays?: number,
+): Promise<WeeklyGenerateResult> {
+  const dates = getWeeklyScheduleDates(new Date(), weekDays);
+  const generated: WeeklyGenerateResult["generated"] = [];
+  const skipped: WeeklyGenerateResult["skipped"] = [];
+
+  for (const scheduleDate of dates) {
+    try {
+      const schedId = await ensureScheduleRow(supabase, channelId, ownerId, scheduleDate);
+      const itemCount = await countScheduleItems(supabase, schedId);
+      if (itemCount > 0) {
+        skipped.push({
+          channelId,
+          scheduleDate,
+          reason: `Already has ${itemCount} items (manual or prior autopilot)`,
+        });
+        continue;
+      }
+
+      const items = await generateAutopilotScheduleItems(supabase, ownerId, scheduleDate);
+      const saved = await persistScheduleAndPush(supabase, ownerId, {
+        channelId,
+        scheduleDate,
+        autopilot: true,
+        existingScheduleId: schedId,
+        items,
+        insertGapsOnPush: true,
+      });
+
+      generated.push({
+        scheduleId: saved.scheduleId,
+        channelId,
+        scheduleDate,
+        itemCount: items.length,
+        pushed: saved.pushed,
+        pushSkippedReason: saved.pushSkippedReason,
+        pushError: saved.pushError,
+      });
+    } catch (err) {
+      skipped.push({
+        channelId,
+        scheduleDate,
+        reason: err instanceof Error ? err.message : "Generate failed",
+      });
+    }
+  }
+
+  return { generated, skipped };
+}
+
 /**
  * Daily autopilot job:
- * 1) Generate **tomorrow** for schedules with autopilot=true and no items yet.
- * 2) **Push today** for channels with playout_active and a non-empty today schedule.
+ * 1) For each channel with **autopilot_enabled**, fill the next 7 days (empty slots only).
+ * 2) Push **today** to Mist when playout_active.
  */
 export async function runAutopilotJobs(
   supabase: SupabaseClient<Database>,
 ): Promise<AutopilotJobResult> {
   const tz = getAutopilotTimezone();
   const today = getTodayInAutopilotTz();
-  const tomorrow = getTomorrowInAutopilotTz();
+  const weekDates = getWeeklyScheduleDates();
 
   const result: AutopilotJobResult = {
     timezone: tz,
     today,
-    tomorrow,
+    weekDates,
     generated: [],
     pushedToday: [],
     skipped: [],
   };
 
-  // --- 1) Generate tomorrow ---
-  const { data: autopilotSchedules, error: apErr } = await supabase
-    .from("schedules")
-    .select("id, channel_id, owner_id, schedule_date, autopilot")
-    .eq("schedule_date", tomorrow)
-    .eq("autopilot", true);
+  const { data: channels, error: chErr } = await supabase
+    .from("channels")
+    .select("id, owner_id, settings");
 
-  if (apErr) throw apErr;
-
-  for (const sched of autopilotSchedules ?? []) {
-    const itemCount = await countScheduleItems(supabase, sched.id);
-    if (itemCount > 0) {
-      result.skipped.push({
-        scheduleId: sched.id,
-        reason: `Tomorrow already has ${itemCount} items`,
-      });
-      continue;
-    }
-
-    try {
-      const items = await generateAutopilotScheduleItems(supabase, sched.owner_id, tomorrow);
-      const saved = await persistScheduleAndPush(supabase, sched.owner_id, {
-        channelId: sched.channel_id,
-        scheduleDate: tomorrow,
-        autopilot: true,
-        existingScheduleId: sched.id,
-        items,
-        insertGapsOnPush: true,
-      });
-      result.generated.push({
-        scheduleId: saved.scheduleId,
-        channelId: sched.channel_id,
-        scheduleDate: tomorrow,
-        itemCount: items.length,
-        pushed: saved.pushed,
-        pushSkippedReason: saved.pushSkippedReason,
-        pushError: saved.pushError,
-      });
-    } catch (err) {
-      result.skipped.push({
-        scheduleId: sched.id,
-        reason: err instanceof Error ? err.message : "Generate failed",
-      });
-    }
-  }
-
-  // Also: channels with playout_active but no tomorrow row — create autopilot schedule
-  const { data: channels, error: chErr } = await supabase.from("channels").select("id, owner_id, settings");
   if (chErr) throw chErr;
 
-  const tomorrowIds = new Set((autopilotSchedules ?? []).map((s) => s.channel_id));
-
   for (const ch of channels ?? []) {
-    if (tomorrowIds.has(ch.id)) continue;
-    const playout = parseChannelPlayoutSettings(ch.settings);
-    if (!playout.playout_active) continue;
+    const settings = parseChannelPlayoutSettings(ch.settings);
+    if (!settings.autopilot_enabled) continue;
 
-    const { data: existing } = await supabase
-      .from("schedules")
-      .select("id")
-      .eq("channel_id", ch.id)
-      .eq("schedule_date", tomorrow)
-      .maybeSingle();
+    const weekResult = await generateWeeklySchedulesForChannel(
+      supabase,
+      ch.id,
+      ch.owner_id,
+      settings.autopilot_week_days,
+    );
+    result.generated.push(...weekResult.generated);
+    result.skipped.push(...weekResult.skipped);
 
-    if (existing) continue;
-
-    try {
-      const items = await generateAutopilotScheduleItems(supabase, ch.owner_id, tomorrow);
-      const saved = await persistScheduleAndPush(supabase, ch.owner_id, {
-        channelId: ch.id,
-        scheduleDate: tomorrow,
-        autopilot: true,
-        items,
-        insertGapsOnPush: true,
-      });
-      result.generated.push({
-        scheduleId: saved.scheduleId,
-        channelId: ch.id,
-        scheduleDate: tomorrow,
-        itemCount: items.length,
-        pushed: saved.pushed,
-        pushSkippedReason: saved.pushSkippedReason,
-        pushError: saved.pushError,
-      });
-    } catch (err) {
-      result.skipped.push({
-        scheduleId: ch.id,
-        reason: `Channel ${ch.id}: ${err instanceof Error ? err.message : "failed"}`,
-      });
-    }
+    await supabase
+      .from("channels")
+      .update({
+        settings: mergePlayoutIntoSettings(ch.settings, {
+          autopilot_last_run_at: new Date().toISOString(),
+        }),
+      })
+      .eq("id", ch.id);
   }
 
-  // --- 2) Push today's air day ---
   const { data: todaySchedules, error: tdErr } = await supabase
     .from("schedules")
     .select("id, channel_id, owner_id, schedule_date")

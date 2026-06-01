@@ -1,7 +1,14 @@
 const DEFAULT_TZ = "Europe/Helsinki";
+const DEFAULT_WEEK_DAYS = 7;
 
 export function getAutopilotTimezone(): string {
   return process.env.AUTOPILOT_TIMEZONE ?? DEFAULT_TZ;
+}
+
+export function getAutopilotWeekDays(): number {
+  const n = Number(process.env.AUTOPILOT_WEEK_DAYS ?? String(DEFAULT_WEEK_DAYS));
+  if (!Number.isFinite(n)) return DEFAULT_WEEK_DAYS;
+  return Math.min(14, Math.max(1, Math.floor(n)));
 }
 
 /** Calendar date yyyy-MM-dd in the given IANA timezone. */
@@ -20,6 +27,21 @@ export function getTodayInAutopilotTz(now = new Date()): string {
 
 export function getTomorrowInAutopilotTz(now = new Date()): string {
   return calendarDateInTz(new Date(now.getTime() + 86400000), getAutopilotTimezone());
+}
+
+/** Add whole calendar days in autopilot TZ (v1: fixed 24h steps from local midnight). */
+export function addCalendarDays(dateStr: string, deltaDays: number, timeZone?: string): string {
+  const tz = timeZone ?? getAutopilotTimezone();
+  const startMs = startOfCalendarDayMs(dateStr, tz);
+  return calendarDateInTz(new Date(startMs + deltaDays * 86_400_000), tz);
+}
+
+/** Rolling week window: today .. today+(weekDays-1) in autopilot TZ. */
+export function getWeeklyScheduleDates(now = new Date(), weekDays?: number): string[] {
+  const days = weekDays ?? getAutopilotWeekDays();
+  const tz = getAutopilotTimezone();
+  const start = getTodayInAutopilotTz(now);
+  return Array.from({ length: days }, (_, i) => addCalendarDays(start, i, tz));
 }
 
 export function hourInTz(instant: Date, timeZone: string): number {
