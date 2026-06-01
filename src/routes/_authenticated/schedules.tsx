@@ -698,3 +698,38 @@ function NewChannelDialog({ onCreate, pending }: { onCreate: (v: { name: string;
     </DialogContent>
   );
 }
+
+function EditChannelDialog({
+  channel,
+  onSave,
+  pending,
+}: {
+  channel: Channel;
+  onSave: (v: { name: string; slug: string }) => void;
+  pending: boolean;
+}) {
+  const [name, setName] = useState(channel.name);
+  const [slug, setSlug] = useState(channel.slug);
+  useEffect(() => {
+    setName(channel.name);
+    setSlug(channel.slug);
+  }, [channel.id, channel.name, channel.slug]);
+  return (
+    <DialogContent className="max-w-sm">
+      <DialogHeader><DialogTitle>Edit channel</DialogTitle></DialogHeader>
+      <div className="space-y-3">
+        <div>
+          <Label className="text-xs">Name</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div>
+          <Label className="text-xs">Slug (a-z, 0-9, -)</Label>
+          <Input value={slug} onChange={(e) => setSlug(toSlug(e.target.value))} />
+        </div>
+      </div>
+      <DialogFooter>
+        <Button disabled={pending || !name || !slug} onClick={() => onSave({ name, slug })}>Save</Button>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
