@@ -10,7 +10,7 @@ import {
   getTodayInAutopilotTz,
   getWeeklyScheduleDates,
 } from "@/lib/schedule/timezone.server";
-import { autoPushIfNeeded } from "@/lib/mist/push-schedule.server";
+import { autoPushIfNeeded, pushTodayAirScheduleForChannel } from "@/lib/mist/push-schedule.server";
 
 export type AutopilotJobResult = {
   timezone: string;
@@ -181,6 +181,16 @@ export async function runAutopilotJobs(
     );
     result.generated.push(...weekResult.generated);
     result.skipped.push(...weekResult.skipped);
+
+    if (settings.playout_active) {
+      const todayPush = await pushTodayAirScheduleForChannel(supabase, ch.id, ch.owner_id);
+      result.pushedToday.push({
+        scheduleId: todayPush.scheduleId ?? ch.id,
+        channelId: ch.id,
+        pushed: todayPush.pushed,
+        reason: todayPush.reason ?? "After weekly autopilot fill",
+      });
+    }
 
     await supabase
       .from("channels")

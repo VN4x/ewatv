@@ -14,6 +14,7 @@ import {
   scheduleItemsToPlsLines,
 } from "@/lib/mist/playlist.server";
 import { parseMegaSourceRef, signMegaObjectKey } from "@/lib/mist/sign-mega.server";
+import { getTodayInAutopilotTz } from "@/lib/schedule/timezone.server";
 
 export type PushScheduleOptions = {
   insertGaps?: boolean;
@@ -223,4 +224,28 @@ export async function autoPushIfNeeded(
     });
     throw err;
   }
+}
+
+/** Push today's schedule to Mist for a channel (air date). Used after weekly autopilot fill. */
+export async function pushTodayAirScheduleForChannel(
+  supabase: AuthSupabase,
+  channelId: string,
+  ownerId: string,
+): Promise<{ pushed: boolean; reason?: string; scheduleId?: string }> {
+  const today = getTodayInAutopilotTz();
+  const { data: sched } = await supabase
+    .from("schedules")
+    .select("id")
+    .eq("channel_id", channelId)
+    .eq("schedule_date", today)
+    .maybeSingle();
+
+  if (!sched?.id) {
+    return { pushed: false, reason: "No schedule for today" };
+  }
+
+  const push = await autoPushIfNeeded(supabase, ownerId, channelId, sched.id, today, {
+    insertGaps: true,
+  });
+  return { pushed: push.pushed, reason: push.reason, scheduleId: sched.id };
 }

@@ -368,9 +368,10 @@ function SchedulesPage() {
               Autopilot weekly ({channelSettings.autopilot_week_days} days)
             </Label>
           </div>
-          <p className="text-xs text-muted-foreground max-w-xs">
-            Stays on until you turn off. Fills empty days in the rolling week; won&apos;t overwrite
-            days you already scheduled.
+          <p className="text-xs text-muted-foreground max-w-md">
+            Stays on until you turn off. Fills empty days for the rolling week (today + 6).
+            <strong> Today&apos;s</strong> lineup is pushed to Mist when Playout active; each other
+            day goes live on its calendar date (nightly cron). One Mist stream = one air day at a time.
           </p>
         </div>
         {channelSettings.last_mist_push_at && (
