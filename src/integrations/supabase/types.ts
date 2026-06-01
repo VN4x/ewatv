@@ -17,6 +17,7 @@ export type Database = {
       channels: {
         Row: {
           created_at: string
+          fallback_youtube_url: string | null
           id: string
           mist_stream_name: string | null
           name: string
@@ -28,6 +29,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          fallback_youtube_url?: string | null
           id?: string
           mist_stream_name?: string | null
           name: string
@@ -39,6 +41,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          fallback_youtube_url?: string | null
           id?: string
           mist_stream_name?: string | null
           name?: string
