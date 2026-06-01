@@ -51,3 +51,14 @@ RLS on `collections` requires an authenticated session tied to a user profile (c
 ### Supabase migrations
 
 Schema lives under `supabase/migrations/`. There is `supabase/config.toml` but no documented “start local Supabase” flow in the repo; agents should use the hosted project from `.env` unless you explicitly add local Supabase tooling.
+### Autopilot vs Mist push
+
+- **Weekly autopilot** writes 7 days of `schedule_items` in Postgres.
+- **Mist** has a single 24/7 HLS URL — it plays **today's** `.pls` only (not all 7 days at once).
+- **Today:** pushed on save, weekly run, and nightly cron when `playout_active`.
+- **Future days:** stored in DB; auto-pushed to Mist when that date becomes today (cron).
+### Daily Mist push @ 04:00
+
+- Cron **04:00 or earlier** in `AUTOPILOT_TIMEZONE` (default `Europe/Helsinki`): `deploy/cron/README.md`.
+- Pushes **today** to Mist; weekly horizon stays in Postgres until each air date.
+- Skills: `.cursor/skills/ewatv-autopilot-cron/`, `ewatv-lovable-playout-ui/` (Lovable prompt).

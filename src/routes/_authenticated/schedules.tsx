@@ -39,9 +39,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { GripVertical, Plus, Save, Trash2, Calendar as CalendarIcon, Search } from "lucide-react";
+import { GripVertical, Plus, Save, Trash2, Calendar as CalendarIcon, Search, Bot } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { parseChannelPlayoutSettings } from "@/lib/channels/settings";
+import {
+  retryPushScheduleToMist,
+  saveScheduleAndPush,
+  updateChannelPlayout,
+} from "@/lib/api/schedule.functions";
+import { runAutopilotNow, updateChannelAutopilot } from "@/lib/api/autopilot.functions";
 
 export const Route = createFileRoute("/_authenticated/schedules")({
   head: () => ({ meta: [{ title: "Schedules — ewatv" }] }),
@@ -52,6 +59,7 @@ type Channel = {
   id: string;
   name: string;
   slug: string;
+  settings?: Record<string, unknown> | null;
 };
 type Video = {
   id: string;
@@ -94,6 +102,7 @@ function SchedulesPage() {
   const [startTime, setStartTime] = useState<string>("00:00");
   const [channelId, setChannelId] = useState<string | null>(null);
   const [autopilot, setAutopilot] = useState(false);
+  const [playoutActive, setPlayoutActive] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [newChannelOpen, setNewChannelOpen] = useState(false);
@@ -101,7 +110,7 @@ function SchedulesPage() {
   const { data: channels = [] } = useQuery({
     queryKey: ["channels"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("channels").select("id,name,slug").order("name");
+      const { data, error } = await supabase.from("channels").select("id,name,slug,settings").order("name");
       if (error) throw error;
       return data as Channel[];
     },
@@ -110,6 +119,21 @@ function SchedulesPage() {
   useEffect(() => {
     if (!channelId && channels.length > 0) setChannelId(channels[0].id);
   }, [channels, channelId]);
+
+  const selectedChannel = useMemo(
+    () => channels.find((c) => c.id === channelId),
+    [channels, channelId],
+  );
+  const channelSettings = useMemo(
+    () => parseChannelPlayoutSettings(selectedChannel?.settings ?? null),
+    [selectedChannel],
+  );
+
+  useEffect(() => {
+    setPlayoutActive(channelSettings.playout_active);
+    setAutopilot(channelSettings.autopilot_enabled);
+  }, [channelSettings.playout_active, channelSettings.autopilot_enabled, channelId]);
+
 
   // Load existing schedule for chosen channel + date
   const { data: loaded, isFetching: loadingSched } = useQuery({
@@ -146,7 +170,6 @@ function SchedulesPage() {
   useEffect(() => {
     if (loaded) {
       setItems(loaded.items);
-      setAutopilot(loaded.schedule?.autopilot ?? false);
     }
   }, [loaded]);
 
@@ -177,52 +200,78 @@ function SchedulesPage() {
   const saveMut = useMutation({
     mutationFn: async () => {
       if (!channelId) throw new Error("Pick a channel");
-      const { data: u } = await supabase.auth.getUser();
-      const uid = u.user?.id;
-      if (!uid) throw new Error("Not authenticated");
-
-      // upsert schedule
-      let schedId = loaded?.schedule?.id;
-      if (!schedId) {
-        const { data: ins, error } = await supabase
-          .from("schedules")
-          .insert({ channel_id: channelId, schedule_date: date, autopilot, owner_id: uid })
-          .select("id")
-          .single();
-        if (error) throw error;
-        schedId = ins.id;
+      const result = await saveScheduleAndPush({
+        data: {
+          channelId,
+          scheduleDate: date,
+          autopilot: channelSettings.autopilot_enabled,
+          existingScheduleId: loaded?.schedule?.id,
+          items: computed.map((it) => ({
+            video_id: it.video_id,
+            duration_ms: it.duration_ms,
+            transition_ms: it.transition_ms,
+            start_at: it.start_at!,
+            source_snapshot: it.source_snapshot,
+          })),
+          insertGapsOnPush: true,
+        },
+      });
+      return result;
+    },
+    onSuccess: (result) => {
+      if (result.pushed) {
+        toast.success("Schedule saved and pushed to Mist");
+      } else if (result.pushError) {
+        toast.error(`Saved, but Mist push failed: ${result.pushError}`);
       } else {
-        const { error } = await supabase
-          .from("schedules")
-          .update({ autopilot })
-          .eq("id", schedId);
-        if (error) throw error;
+        toast.success(
+          result.pushSkippedReason
+            ? `Schedule saved (${result.pushSkippedReason})`
+            : "Schedule saved",
+        );
       }
+      qc.invalidateQueries({ queryKey: ["schedule", channelId, date] });
+      qc.invalidateQueries({ queryKey: ["channels"] });
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Save failed"),
+  });
 
-      // wipe + reinsert items (simple, atomic enough for single-user)
-      const { error: delErr } = await supabase.from("schedule_items").delete().eq("schedule_id", schedId);
-      if (delErr) throw delErr;
-      if (computed.length > 0) {
-        const rows = computed.map((it, i) => ({
-          schedule_id: schedId!,
-          owner_id: uid,
-          video_id: it.video_id,
-          position: i,
-          start_at: it.start_at!,
-          duration_ms: it.duration_ms,
-          transition_ms: it.transition_ms,
-          source_snapshot: it.source_snapshot as any,
-        }));
-        const { error: insErr } = await supabase.from("schedule_items").insert(rows);
-        if (insErr) throw insErr;
-      }
-      return schedId;
+  const playoutToggleMut = useMutation({
+    mutationFn: async (active: boolean) => {
+      if (!channelId) throw new Error("Pick a channel");
+      return updateChannelPlayout({ data: { channelId, playoutActive: active } });
+    },
+    onSuccess: (_res, active) => {
+      setPlayoutActive(active);
+      toast.success(active ? "Playout active — saves for today push to Mist" : "Playout paused");
+      qc.invalidateQueries({ queryKey: ["channels"] });
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Update failed"),
+  });
+
+  const autopilotMut = useMutation({
+    mutationFn: async () => {
+      if (!channelId) throw new Error("Pick a channel");
+      return runAutopilotNow({ data: { channelId } });
+    },
+    onSuccess: (res) => {
+      const n = res.generated?.length ?? 0;
+      toast.success(`Weekly refresh: ${n} day(s) generated`);
+      qc.invalidateQueries({ queryKey: ["schedule", channelId, date] });
+      qc.invalidateQueries({ queryKey: ["channels"] });
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Autopilot failed"),
+  });
+
+  const retryPushMut = useMutation({
+    mutationFn: async (scheduleId: string) => {
+      return retryPushScheduleToMist({ data: { scheduleId, insertGaps: true } });
     },
     onSuccess: () => {
-      toast.success("Schedule saved");
-      qc.invalidateQueries({ queryKey: ["schedule", channelId, date] });
+      toast.success("Pushed to Mist");
+      qc.invalidateQueries({ queryKey: ["channels"] });
     },
-    onError: (e: any) => toast.error(e.message ?? "Save failed"),
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Push failed"),
   });
 
   const createChannel = useMutation({
@@ -299,11 +348,63 @@ function SchedulesPage() {
           <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-[120px]" />
         </div>
         <div className="flex items-center gap-2 pb-1">
-          <Switch checked={autopilot} onCheckedChange={setAutopilot} id="autopilot" />
-          <Label htmlFor="autopilot" className="text-sm">Autopilot</Label>
+          <Switch
+            checked={playoutActive}
+            onCheckedChange={(v) => playoutToggleMut.mutate(v)}
+            disabled={!channelId || playoutToggleMut.isPending}
+            id="playout-active"
+          />
+          <Label htmlFor="playout-active" className="text-sm">Playout active</Label>
         </div>
+        <div className="flex flex-col gap-1 pb-1">
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={autopilot}
+              onCheckedChange={(v) => autopilotToggleMut.mutate(v)}
+              disabled={!channelId || autopilotToggleMut.isPending}
+              id="autopilot"
+            />
+            <Label htmlFor="autopilot" className="text-sm">
+              Autopilot weekly ({channelSettings.autopilot_week_days} days)
+            </Label>
+          </div>
+          <p className="text-xs text-muted-foreground max-w-md">
+            Stays on until you turn off. Fills empty days for the rolling week (today + 6).
+            <strong> Today&apos;s</strong> lineup is pushed to Mist when Playout active; each other
+            day goes live on its calendar date (nightly cron). One Mist stream = one air day at a time.
+          </p>
+        </div>
+        {channelSettings.last_mist_push_at && (
+          <p className="pb-1 text-xs text-muted-foreground">
+            Last Mist push: {format(parseISO(channelSettings.last_mist_push_at), "MMM d HH:mm")}
+            {channelSettings.last_mist_push_error && (
+              <span className="text-destructive"> — {channelSettings.last_mist_push_error}</span>
+            )}
+          </p>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <Badge variant="secondary">{computed.length} items · {fmtDur(totalMs)}</Badge>
+          {loaded?.schedule?.id && playoutActive && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={retryPushMut.isPending}
+              onClick={() => retryPushMut.mutate(loaded.schedule!.id)}
+            >
+              Retry Mist push
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={autopilotMut.isPending || !channelId}
+            onClick={() => autopilotMut.mutate()}
+            title="Regenerate empty days in the 7-day horizon for this channel"
+          >
+            <Bot className="mr-2 h-4 w-4" />
+            Run autopilot
+          </Button>
           <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !channelId}>
             <Save /> Save
           </Button>
