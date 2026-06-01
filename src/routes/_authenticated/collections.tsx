@@ -14,7 +14,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Folder, FolderPlus, Plus, Search, Trash2, Pencil, ChevronRight, ChevronDown } from "lucide-react";
+import { Folder, FolderPlus, Plus, Search, Trash2, Pencil, ChevronRight, ChevronDown, Play, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -198,6 +198,7 @@ function CollectionsPage() {
                   </td>
                   <td className="px-3 py-2 text-right">
                     <div className="flex justify-end gap-1">
+                      <TestPlayButton video={v} />
                       <VideoDialog
                         collections={collections}
                         existing={v}
@@ -439,8 +440,37 @@ function VideoDialog({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>Length (seconds)</Label>
-            <Input type="number" min={0} value={lengthSec} onChange={(e) => setLengthSec(Number(e.target.value))} />
+            <Label>Length (hh:mm:ss, mm:ss, or seconds)</Label>
+            <div className="flex gap-1.5">
+              <Input
+                value={lengthSec ? formatLen(lengthSec) : ""}
+                onChange={(e) => setLengthSec(parseLen(e.target.value))}
+                placeholder="0:00"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                title="Auto-detect from URL"
+                onClick={async () => {
+                  if (!sourceRef.trim()) { toast.error("Enter URL first"); return; }
+                  if (sourceType !== "direct_url" && sourceType !== "mega_s3") {
+                    toast.error("Auto-detect only works for direct/Mega URLs");
+                    return;
+                  }
+                  try {
+                    toast.info("Probing…");
+                    const sec = await probeDuration(sourceRef.trim());
+                    setLengthSec(sec);
+                    toast.success(`Detected ${formatLen(sec)}`);
+                  } catch (e) {
+                    toast.error((e as Error).message);
+                  }
+                }}
+              >
+                <Wand2 className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label>{sourceType === "mega_s3" ? "S3 key (bucket/key)" : "URL"}</Label>
@@ -509,4 +539,90 @@ function formatLen(s: number) {
   const sec = s % 60;
   if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
   return `${m}:${String(sec).padStart(2, "0")}`;
+}
+
+function parseLen(input: string): number {
+  const s = input.trim();
+  if (!s) return 0;
+  if (!s.includes(":")) return Math.max(0, Math.floor(Number(s) || 0));
+  const parts = s.split(":").map((p) => Number(p) || 0);
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return 0;
+}
+
+function probeDuration(url: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const el = document.createElement("video");
+    el.preload = "metadata";
+    el.muted = true;
+    el.crossOrigin = "anonymous";
+    const cleanup = () => { el.src = ""; el.remove(); };
+    const timer = setTimeout(() => { cleanup(); reject(new Error("Timed out (10s)")); }, 10000);
+    el.onloadedmetadata = () => {
+      clearTimeout(timer);
+      const d = Math.round(el.duration);
+      cleanup();
+      if (!isFinite(d) || d <= 0) reject(new Error("No duration in metadata"));
+      else resolve(d);
+    };
+    el.onerror = () => { clearTimeout(timer); cleanup(); reject(new Error("Cannot load video (CORS or unsupported)")); };
+    el.src = url;
+  });
+}
+
+function resolvePlayUrl(v: Video): string | null {
+  switch (v.source_type) {
+    case "direct_url": return v.source_ref;
+    case "mega_s3": return null; // needs signing (server fn) — coming in Milestone 2
+    case "youtube": {
+      const m = v.source_ref.match(/(?:v=|youtu\.be\/|embed\/)([\w-]{11})/);
+      return m ? `https://www.youtube.com/embed/${m[1]}?autoplay=1` : v.source_ref;
+    }
+    case "vimeo": {
+      const m = v.source_ref.match(/vimeo\.com\/(\d+)/);
+      return m ? `https://player.vimeo.com/video/${m[1]}?autoplay=1` : v.source_ref;
+    }
+    case "dailymotion": {
+      const m = v.source_ref.match(/(?:dailymotion\.com\/(?:video|embed\/video)\/|dai\.ly\/)([a-zA-Z0-9]+)/);
+      return m ? `https://www.dailymotion.com/embed/video/${m[1]}?autoplay=1` : v.source_ref;
+    }
+  }
+}
+
+function TestPlayButton({ video }: { video: Video }) {
+  const [open, setOpen] = useState(false);
+  const url = resolvePlayUrl(video);
+  const isIframe = video.source_type === "youtube" || video.source_type === "vimeo" || video.source_type === "dailymotion";
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          size="icon"
+          variant="ghost"
+          title="Test play"
+          onClick={(e) => {
+            if (!url) {
+              e.preventDefault();
+              toast.error("Mega S3 needs signed URL (Milestone 2)");
+            }
+          }}
+        >
+          <Play className="h-4 w-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader><DialogTitle>{video.title}</DialogTitle></DialogHeader>
+        {url && (
+          <div className="aspect-video w-full overflow-hidden rounded bg-black">
+            {isIframe ? (
+              <iframe src={url} className="h-full w-full" allow="autoplay; fullscreen" allowFullScreen />
+            ) : (
+              <video src={url} controls autoPlay className="h-full w-full" />
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
 }
