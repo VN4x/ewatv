@@ -265,6 +265,21 @@ function SchedulesPage() {
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Autopilot failed"),
   });
 
+  const autopilotToggleMut = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      if (!channelId) throw new Error("Pick a channel");
+      return updateChannelAutopilot({ data: { channelId, autopilotEnabled: enabled } });
+    },
+    onSuccess: (_res, enabled) => {
+      setAutopilot(enabled);
+      toast.success(enabled ? "Autopilot enabled" : "Autopilot disabled");
+      qc.invalidateQueries({ queryKey: ["channels"] });
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Update failed"),
+  });
+
+
+
   const retryPushMut = useMutation({
     mutationFn: async (scheduleId: string) => {
       return retryPushScheduleToMist({ data: { scheduleId, insertGaps: true } });
