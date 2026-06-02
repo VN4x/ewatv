@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
@@ -17,7 +17,6 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,7 +38,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { GripVertical, Plus, Save, Trash2, Calendar as CalendarIcon, Search, Bot, Pencil } from "lucide-react";
+import {
+  GripVertical,
+  Plus,
+  Save,
+  Trash2,
+  Calendar as CalendarIcon,
+  CalendarPlus,
+  Search,
+  Bot,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { parseChannelPlayoutSettings } from "@/lib/channels/settings";
@@ -70,22 +79,16 @@ type Video = {
   collection_id: string | null;
 };
 type Item = {
-  id: string; // local uuid (not yet saved) or db id
+  id: string;
   video_id: string;
   title: string;
   duration_ms: number;
   transition_ms: number;
   source_snapshot: { source_type: string; source_ref: string };
-  start_at?: string; // computed
+  start_at?: string;
   persisted?: boolean;
 };
 
-const slugSchema = z.string().trim().min(1).max(64).regex(/^[a-z0-9-]+$/);
-const nameSchema = z.string().trim().min(1).max(120);
-
-function toSlug(s: string) {
-  return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 64);
-}
 function fmtDur(ms: number) {
   const s = Math.round(ms / 1000);
   const h = Math.floor(s / 3600);
@@ -106,14 +109,14 @@ function SchedulesPage() {
   const [playoutActive, setPlayoutActive] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [newChannelOpen, setNewChannelOpen] = useState(false);
-  const [editChannelOpen, setEditChannelOpen] = useState(false);
-  const [deleteChannelOpen, setDeleteChannelOpen] = useState(false);
 
   const { data: channels = [] } = useQuery({
     queryKey: ["channels"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("channels").select("id,name,slug,settings").order("name");
+      const { data, error } = await supabase
+        .from("channels")
+        .select("id,name,slug,settings")
+        .order("name");
       if (error) throw error;
       return data as Channel[];
     },
@@ -124,7 +127,7 @@ function SchedulesPage() {
   }, [channels, channelId]);
 
   const selectedChannel = useMemo(
-    () => channels.find((c) => c.id === channelId),
+    () => channels.find((c) => c.id === channelId) ?? null,
     [channels, channelId],
   );
   const channelSettings = useMemo(
@@ -137,8 +140,6 @@ function SchedulesPage() {
     setAutopilot(channelSettings.autopilot_enabled);
   }, [channelSettings.playout_active, channelSettings.autopilot_enabled, channelId]);
 
-
-  // Load existing schedule for chosen channel + date
   const { data: loaded, isFetching: loadingSched } = useQuery({
     enabled: !!channelId && !!date,
     queryKey: ["schedule", channelId, date],
@@ -153,7 +154,9 @@ function SchedulesPage() {
       if (!sched) return { schedule: null, items: [] as Item[] };
       const { data: rows, error: e2 } = await supabase
         .from("schedule_items")
-        .select("id,video_id,duration_ms,transition_ms,source_snapshot,start_at,position,videos(title)")
+        .select(
+          "id,video_id,duration_ms,transition_ms,source_snapshot,start_at,position,videos(title)",
+        )
         .eq("schedule_id", sched.id)
         .order("position");
       if (e2) throw e2;
@@ -171,25 +174,26 @@ function SchedulesPage() {
   });
 
   useEffect(() => {
-    if (loaded) {
-      setItems(loaded.items);
-    }
+    if (loaded) setItems(loaded.items);
   }, [loaded]);
 
-  // Recompute start_at locally
+  // Recompute start_at locally — every item uses the channel-wide transition_ms.
+  const channelGap = channelSettings.transition_ms;
   const computed = useMemo(() => {
     const base = new Date(`${date}T${startTime || "00:00"}:00`);
     let t = base.getTime();
     return items.map((it) => {
       const start = new Date(t).toISOString();
-      t += it.duration_ms + it.transition_ms;
-      return { ...it, start_at: start };
+      t += it.duration_ms + channelGap;
+      return { ...it, transition_ms: channelGap, start_at: start };
     });
-  }, [items, date, startTime]);
+  }, [items, date, startTime, channelGap]);
 
   const totalMs = computed.reduce((a, it) => a + it.duration_ms + it.transition_ms, 0);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+  );
   function onDragEnd(e: DragEndEvent) {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
@@ -200,10 +204,47 @@ function SchedulesPage() {
     });
   }
 
+  // Latest end time across this channel's schedule items (excludes current schedule).
+  const { data: prevEnd } = useQuery({
+    enabled: !!channelId,
+    queryKey: ["prev-end", channelId, loaded?.schedule?.id ?? null],
+    queryFn: async () => {
+      const { data: scheds, error } = await supabase
+        .from("schedules")
+        .select("id")
+        .eq("channel_id", channelId!);
+      if (error) throw error;
+      const ids = (scheds ?? [])
+        .map((s) => s.id)
+        .filter((id) => id !== loaded?.schedule?.id);
+      if (ids.length === 0) return null;
+      const { data: rows, error: e2 } = await supabase
+        .from("schedule_items")
+        .select("start_at,duration_ms,transition_ms")
+        .in("schedule_id", ids);
+      if (e2) throw e2;
+      let max = 0;
+      for (const r of rows ?? []) {
+        const t = new Date(r.start_at).getTime() + r.duration_ms + r.transition_ms;
+        if (t > max) max = t;
+      }
+      return max ? new Date(max).toISOString() : null;
+    },
+  });
+
+  // Auto-prefill date + start time from previous schedule's end (unless user touched it).
+  useEffect(() => {
+    if (!prevEnd || startTimeTouched) return;
+    if (loaded?.items.length) return;
+    const d = new Date(prevEnd);
+    setDate(format(d, "yyyy-MM-dd"));
+    setStartTime(format(d, "HH:mm"));
+  }, [prevEnd, loaded, startTimeTouched]);
+
   const saveMut = useMutation({
     mutationFn: async () => {
       if (!channelId) throw new Error("Pick a channel");
-      const result = await saveScheduleAndPush({
+      return saveScheduleAndPush({
         data: {
           channelId,
           scheduleDate: date,
@@ -219,7 +260,6 @@ function SchedulesPage() {
           insertGapsOnPush: true,
         },
       });
-      return result;
     },
     onSuccess: (result) => {
       if (result.pushed) {
@@ -236,7 +276,8 @@ function SchedulesPage() {
       qc.invalidateQueries({ queryKey: ["schedule", channelId, date] });
       qc.invalidateQueries({ queryKey: ["channels"] });
     },
-    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Save failed"),
+    onError: (e: unknown) =>
+      toast.error(e instanceof Error ? e.message : "Save failed"),
   });
 
   const playoutToggleMut = useMutation({
@@ -246,10 +287,13 @@ function SchedulesPage() {
     },
     onSuccess: (_res, active) => {
       setPlayoutActive(active);
-      toast.success(active ? "Playout active — saves for today push to Mist" : "Playout paused");
+      toast.success(
+        active ? "Playout active — saves for today push to Mist" : "Playout paused",
+      );
       qc.invalidateQueries({ queryKey: ["channels"] });
     },
-    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Update failed"),
+    onError: (e: unknown) =>
+      toast.error(e instanceof Error ? e.message : "Update failed"),
   });
 
   const autopilotMut = useMutation({
@@ -263,175 +307,35 @@ function SchedulesPage() {
       qc.invalidateQueries({ queryKey: ["schedule", channelId, date] });
       qc.invalidateQueries({ queryKey: ["channels"] });
     },
-    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Autopilot failed"),
+    onError: (e: unknown) =>
+      toast.error(e instanceof Error ? e.message : "Autopilot failed"),
   });
 
   const autopilotToggleMut = useMutation({
     mutationFn: async (enabled: boolean) => {
       if (!channelId) throw new Error("Pick a channel");
-      return updateChannelAutopilot({ data: { channelId, autopilotEnabled: enabled } });
+      return updateChannelAutopilot({
+        data: { channelId, autopilotEnabled: enabled },
+      });
     },
     onSuccess: (_res, enabled) => {
       setAutopilot(enabled);
       toast.success(enabled ? "Autopilot enabled" : "Autopilot disabled");
       qc.invalidateQueries({ queryKey: ["channels"] });
     },
-    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Update failed"),
+    onError: (e: unknown) =>
+      toast.error(e instanceof Error ? e.message : "Update failed"),
   });
 
-
-
   const retryPushMut = useMutation({
-    mutationFn: async (scheduleId: string) => {
-      return retryPushScheduleToMist({ data: { scheduleId, insertGaps: true } });
-    },
+    mutationFn: async (scheduleId: string) =>
+      retryPushScheduleToMist({ data: { scheduleId, insertGaps: true } }),
     onSuccess: () => {
       toast.success("Pushed to Mist");
       qc.invalidateQueries({ queryKey: ["channels"] });
     },
-    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Push failed"),
-  });
-
-  const createChannel = useMutation({
-    mutationFn: async (v: { name: string; slug: string }) => {
-      nameSchema.parse(v.name);
-      slugSchema.parse(v.slug);
-      const { data: u } = await supabase.auth.getUser();
-      const uid = u.user?.id;
-      if (!uid) throw new Error("Not authenticated");
-      const { data, error } = await supabase
-        .from("channels")
-        .insert({ name: v.name, slug: v.slug, owner_id: uid })
-        .select("id,name,slug")
-        .single();
-      if (error) throw error;
-      return data as Channel;
-    },
-    onSuccess: (ch) => {
-      toast.success(`Channel "${ch.name}" created`);
-      qc.invalidateQueries({ queryKey: ["channels"] });
-      setChannelId(ch.id);
-      setNewChannelOpen(false);
-    },
-    onError: (e: any) => toast.error(e.message ?? "Failed"),
-  });
-
-  const currentChannel = channels.find((c) => c.id === channelId) ?? null;
-
-  // Latest end time across this channel's schedule items (excludes current schedule)
-  const { data: prevEnd } = useQuery({
-    enabled: !!channelId,
-    queryKey: ["prev-end", channelId, loaded?.schedule?.id ?? null],
-    queryFn: async () => {
-      const { data: scheds, error } = await supabase
-        .from("schedules")
-        .select("id")
-        .eq("channel_id", channelId!);
-      if (error) throw error;
-      const ids = (scheds ?? []).map((s) => s.id).filter((id) => id !== loaded?.schedule?.id);
-      if (ids.length === 0) return null;
-      const { data: rows, error: e2 } = await supabase
-        .from("schedule_items")
-        .select("start_at,duration_ms,transition_ms")
-        .in("schedule_id", ids);
-      if (e2) throw e2;
-      let max = 0;
-      for (const r of rows ?? []) {
-        const t = new Date(r.start_at).getTime() + r.duration_ms + r.transition_ms;
-        if (t > max) max = t;
-      }
-      return max ? new Date(max).toISOString() : null;
-    },
-  });
-
-  // Auto-prefill date + start time from previous schedule's end (unless user touched start time)
-  useEffect(() => {
-    if (!prevEnd || startTimeTouched) return;
-    if (loaded?.items.length) return; // existing schedule has items, leave alone
-    const d = new Date(prevEnd);
-    setDate(format(d, "yyyy-MM-dd"));
-    setStartTime(format(d, "HH:mm"));
-  }, [prevEnd, loaded, startTimeTouched]);
-
-  const editChannel = useMutation({
-    mutationFn: async (v: { name: string; slug: string }) => {
-      if (!channelId) throw new Error("No channel");
-      nameSchema.parse(v.name);
-      slugSchema.parse(v.slug);
-  // Schedule count for the currently selected channel — shown in delete dialog
-  const { data: channelScheduleCount } = useQuery({
-    enabled: !!channelId && deleteChannelOpen,
-    queryKey: ["channel-schedule-count", channelId],
-    queryFn: async () => {
-      const { count, error } = await supabase
-        .from("schedules")
-        .select("id", { count: "exact", head: true })
-        .eq("channel_id", channelId!);
-      if (error) throw error;
-      return count ?? 0;
-    },
-  });
-
-  const editChannel = useMutation({
-    mutationFn: async (v: { name: string; slug: string }) => {
-      if (!channelId) throw new Error("No channel selected");
-      nameSchema.parse(v.name);
-      slugSchema.parse(v.slug);
-      // Prevent slug collision (excluding self)
-      const { data: dup } = await supabase
-        .from("channels")
-        .select("id")
-        .eq("slug", v.slug)
-        .neq("id", channelId)
-        .maybeSingle();
-      if (dup) throw new Error("Slug already in use by another channel");
-      const { error } = await supabase
-        .from("channels")
-        .update({ name: v.name, slug: v.slug })
-        .eq("id", channelId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success("Channel updated");
-      qc.invalidateQueries({ queryKey: ["channels"] });
-      setEditChannelOpen(false);
-    },
-    onError: (e: any) => toast.error(e.message ?? "Failed to update channel"),
-  });
-
-  const deleteChannel = useMutation({
-    mutationFn: async () => {
-      if (!channelId) throw new Error("No channel selected");
-      // Cascade: schedule_items -> schedules -> channel (no FK cascade in DB)
-      const { data: scheds, error: e1 } = await supabase
-        .from("schedules")
-        .select("id")
-        .eq("channel_id", channelId);
-      if (e1) throw e1;
-      const ids = (scheds ?? []).map((s) => s.id);
-      if (ids.length > 0) {
-        const { error: e2 } = await supabase
-          .from("schedule_items")
-          .delete()
-          .in("schedule_id", ids);
-        if (e2) throw e2;
-        const { error: e3 } = await supabase
-          .from("schedules")
-          .delete()
-          .in("id", ids);
-        if (e3) throw e3;
-      }
-      const { error } = await supabase.from("channels").delete().eq("id", channelId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      toast.success("Channel deleted");
-      setDeleteChannelOpen(false);
-      setChannelId(null);
-      setItems([]);
-      qc.invalidateQueries({ queryKey: ["channels"] });
-    },
-    onError: (e: any) => toast.error(e.message ?? "Failed"),
+    onError: (e: unknown) =>
+      toast.error(e instanceof Error ? e.message : "Push failed"),
   });
 
   const createMut = useMutation({
@@ -440,7 +344,6 @@ function SchedulesPage() {
       const { data: u } = await supabase.auth.getUser();
       const uid = u.user?.id;
       if (!uid) throw new Error("Not authenticated");
-      // Derive date + start from previous end if present
       let useDate = date;
       let useStart = startTime;
       if (prevEnd) {
@@ -451,7 +354,6 @@ function SchedulesPage() {
         setStartTime(useStart);
         setStartTimeTouched(false);
       }
-      // Don't duplicate an existing schedule for the same day
       const { data: existing } = await supabase
         .from("schedules")
         .select("id")
@@ -464,7 +366,12 @@ function SchedulesPage() {
       }
       const { data: ins, error } = await supabase
         .from("schedules")
-        .insert({ channel_id: channelId, schedule_date: useDate, autopilot: false, owner_id: uid })
+        .insert({
+          channel_id: channelId,
+          schedule_date: useDate,
+          autopilot: false,
+          owner_id: uid,
+        })
         .select("id")
         .single();
       if (error) throw error;
@@ -486,7 +393,7 @@ function SchedulesPage() {
         video_id: v.id,
         title: v.title,
         duration_ms: Math.max(1, v.length_sec) * 1000,
-        transition_ms: 2000,
+        transition_ms: channelGap,
         source_snapshot: { source_type: v.source_type, source_ref: v.source_ref },
       })),
     ]);
@@ -511,105 +418,32 @@ function SchedulesPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Dialog open={newChannelOpen} onOpenChange={setNewChannelOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="icon" title="New channel"><Plus /></Button>
-              </DialogTrigger>
-              <ChannelFormDialog
-                mode="create"
-                onSubmit={(v) => createChannel.mutate(v)}
-                pending={createChannel.isPending}
-                otherSlugs={channels.map((c) => c.slug)}
-              />
-            </Dialog>
-            <Dialog open={editChannelOpen} onOpenChange={setEditChannelOpen}>
-              <DialogTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  title="Rename channel"
-                  disabled={!selectedChannel}
+            {selectedChannel ? (
+              <Button asChild variant="outline" size="icon" title="Channel settings">
+                <Link
+                  to="/channels/$channelSlug/settings"
+                  params={{ channelSlug: selectedChannel.slug }}
                 >
-                  <Pencil />
-                </Button>
-              </DialogTrigger>
-              {selectedChannel && (
-                <ChannelFormDialog
-                  mode="edit"
-                  initial={{ name: selectedChannel.name, slug: selectedChannel.slug }}
-                  onSubmit={(v) => editChannel.mutate(v)}
-                  pending={editChannel.isPending}
-                  otherSlugs={channels.filter((c) => c.id !== selectedChannel.id).map((c) => c.slug)}
-                />
-              )}
-            </Dialog>
-            <Dialog open={deleteChannelOpen} onOpenChange={setDeleteChannelOpen}>
-              <DialogTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  title="Delete channel"
-                  disabled={!selectedChannel}
-                >
-                  <Trash2 />
-                </Button>
-              </DialogTrigger>
-              {selectedChannel && (
-                <DeleteChannelDialog
-                  channelName={selectedChannel.name}
-                  scheduleCount={channelScheduleCount ?? null}
-                  onConfirm={() => deleteChannel.mutate()}
-                  onCancel={() => setDeleteChannelOpen(false)}
-                  pending={deleteChannel.isPending}
-                />
-              )}
-            </Dialog>
-            <Dialog open={editChannelOpen} onOpenChange={setEditChannelOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="icon" title="Edit channel" disabled={!currentChannel}>
-                  <Pencil />
-                </Button>
-              </DialogTrigger>
-              {currentChannel && (
-                <EditChannelDialog
-                  channel={currentChannel}
-                  onSave={(v) => editChannel.mutate(v)}
-                  pending={editChannel.isPending}
-                />
-              )}
-            </Dialog>
-            <Dialog open={deleteChannelOpen} onOpenChange={setDeleteChannelOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="icon" title="Delete channel" disabled={!currentChannel}>
-                  <Trash2 />
-                </Button>
-              </DialogTrigger>
-              {currentChannel && (
-                <DialogContent className="max-w-sm">
-                  <DialogHeader>
-                    <DialogTitle>Delete "{currentChannel.name}"?</DialogTitle>
-                  </DialogHeader>
-                  <p className="text-sm text-muted-foreground">
-                    This permanently removes the channel and all of its schedules. Videos are kept.
-                  </p>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setDeleteChannelOpen(false)}>Cancel</Button>
-                    <Button
-                      variant="destructive"
-                      onClick={() => deleteChannel.mutate()}
-                      disabled={deleteChannel.isPending}
-                    >
-                      Delete
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              )}
-            </Dialog>
+                  <SettingsIcon />
+                </Link>
+              </Button>
+            ) : (
+              <Button asChild variant="outline" size="icon" title="Create channel">
+                <Link to="/channels/new/settings">
+                  <Plus />
+                </Link>
+              </Button>
+            )}
           </div>
         </div>
         <div>
           <Label className="text-xs">Date</Label>
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-[160px]" />
+          <Input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="w-[160px]"
+          />
         </div>
         <div>
           <Label className="text-xs">Day start</Label>
@@ -630,7 +464,9 @@ function SchedulesPage() {
             disabled={!channelId || playoutToggleMut.isPending}
             id="playout-active"
           />
-          <Label htmlFor="playout-active" className="text-sm">Playout active</Label>
+          <Label htmlFor="playout-active" className="text-sm">
+            Playout active
+          </Label>
         </div>
         <div className="flex flex-col gap-1 pb-1">
           <div className="flex items-center gap-2">
@@ -644,10 +480,10 @@ function SchedulesPage() {
               Autopilot weekly ({channelSettings.autopilot_week_days} days)
             </Label>
           </div>
-          <p className="text-xs text-muted-foreground max-w-md">
-            Stays on until you turn off. Fills empty days for the rolling week (today + 6).
-            <strong> Today&apos;s</strong> lineup is pushed to Mist when Playout active; each other
-            day goes live on its calendar date (nightly cron). One Mist stream = one air day at a time.
+          <p className="max-w-md text-xs text-muted-foreground">
+            Stays on until you turn off. Fills empty days for the rolling week
+            (today + 6). <strong>Today&apos;s</strong> lineup is pushed to Mist
+            when Playout active; each other day goes live on its calendar date.
           </p>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -656,24 +492,21 @@ function SchedulesPage() {
               Prev ends {format(parseISO(prevEnd), "MMM d HH:mm")}
             </Badge>
           )}
-          <Badge variant="secondary">{computed.length} items · {fmtDur(totalMs)}</Badge>
+          <Badge variant="outline" className="tabular-nums">
+            Gap {Math.round(channelGap / 1000)}s
+          </Badge>
+          <Badge variant="secondary">
+            {computed.length} items · {fmtDur(totalMs)}
+          </Badge>
           <Button
             variant="outline"
             onClick={() => createMut.mutate()}
             disabled={createMut.isPending || !channelId}
             title="Create a new schedule starting at the previous schedule's end"
           >
-            <CalendarPlus /> Create
-        {channelSettings.last_mist_push_at && (
-          <p className="pb-1 text-xs text-muted-foreground">
-            Last Mist push: {format(parseISO(channelSettings.last_mist_push_at), "MMM d HH:mm")}
-            {channelSettings.last_mist_push_error && (
-              <span className="text-destructive"> — {channelSettings.last_mist_push_error}</span>
-            )}
-          </p>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          <Badge variant="secondary">{computed.length} items · {fmtDur(totalMs)}</Badge>
+            <CalendarPlus className="mr-2 h-4 w-4" />
+            Create
+          </Button>
           {loaded?.schedule?.id && playoutActive && (
             <Button
               type="button"
@@ -696,11 +529,19 @@ function SchedulesPage() {
             Run autopilot
           </Button>
           <Button onClick={() => saveMut.mutate()} disabled={saveMut.isPending || !channelId}>
-            <Save /> Save
+            <Save className="mr-2 h-4 w-4" /> Save
           </Button>
         </div>
       </div>
 
+      {channelSettings.last_mist_push_at && (
+        <p className="text-xs text-muted-foreground">
+          Last Mist push: {format(parseISO(channelSettings.last_mist_push_at), "MMM d HH:mm")}
+          {channelSettings.last_mist_push_error && (
+            <span className="text-destructive"> — {channelSettings.last_mist_push_error}</span>
+          )}
+        </p>
+      )}
 
       <div className="rounded-md border">
         <div className="flex items-center justify-between border-b p-2">
@@ -710,7 +551,9 @@ function SchedulesPage() {
           </div>
           <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
             <DialogTrigger asChild>
-              <Button size="sm"><Plus /> Add videos</Button>
+              <Button size="sm">
+                <Plus className="mr-2 h-4 w-4" /> Add videos
+              </Button>
             </DialogTrigger>
             <VideoPickerDialog onAdd={addVideos} />
           </Dialog>
@@ -722,7 +565,10 @@ function SchedulesPage() {
           </div>
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-            <SortableContext items={computed.map((i) => i.id)} strategy={verticalListSortingStrategy}>
+            <SortableContext
+              items={computed.map((i) => i.id)}
+              strategy={verticalListSortingStrategy}
+            >
               <ul className="divide-y">
                 {computed.map((it, idx) => (
                   <SortableRow
@@ -730,9 +576,6 @@ function SchedulesPage() {
                     item={it}
                     index={idx}
                     onRemove={() => setItems((a) => a.filter((x) => x.id !== it.id))}
-                    onTransitionChange={(ms) =>
-                      setItems((a) => a.map((x) => (x.id === it.id ? { ...x, transition_ms: ms } : x)))
-                    }
                   />
                 ))}
               </ul>
@@ -748,14 +591,14 @@ function SortableRow({
   item,
   index,
   onRemove,
-  onTransitionChange,
 }: {
   item: Item;
   index: number;
   onRemove: () => void;
-  onTransitionChange: (ms: number) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.id,
+  });
   const style = { transform: CSS.Transform.toString(transform), transition };
   const startLabel = item.start_at ? format(parseISO(item.start_at), "HH:mm:ss") : "--:--:--";
   return (
@@ -772,22 +615,14 @@ function SortableRow({
       >
         <GripVertical className="h-4 w-4" />
       </button>
-      <span className="w-10 text-right tabular-nums text-xs text-muted-foreground">{index + 1}</span>
+      <span className="w-10 text-right tabular-nums text-xs text-muted-foreground">
+        {index + 1}
+      </span>
       <span className="w-20 tabular-nums text-sm font-medium">{startLabel}</span>
       <span className="flex-1 truncate text-sm">{item.title}</span>
-      <Badge variant="outline" className="tabular-nums">{fmtDur(item.duration_ms)}</Badge>
-      <div className="flex items-center gap-1">
-        <Label className="text-xs text-muted-foreground">gap</Label>
-        <Input
-          type="number"
-          min={0}
-          max={60}
-          value={Math.round(item.transition_ms / 1000)}
-          onChange={(e) => onTransitionChange(Math.max(0, Number(e.target.value) || 0) * 1000)}
-          className="h-8 w-16"
-        />
-        <span className="text-xs text-muted-foreground">s</span>
-      </div>
+      <Badge variant="outline" className="tabular-nums">
+        {fmtDur(item.duration_ms)}
+      </Badge>
       <Button variant="ghost" size="icon" onClick={onRemove} aria-label="Remove">
         <Trash2 className="h-4 w-4" />
       </Button>
@@ -803,7 +638,10 @@ function VideoPickerDialog({ onAdd }: { onAdd: (v: Video[]) => void }) {
   const { data: collections = [] } = useQuery({
     queryKey: ["collections-picker"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("collections").select("id,name").order("name");
+      const { data, error } = await supabase
+        .from("collections")
+        .select("id,name")
+        .order("name");
       if (error) throw error;
       return data as { id: string; name: string }[];
     },
@@ -811,7 +649,10 @@ function VideoPickerDialog({ onAdd }: { onAdd: (v: Video[]) => void }) {
   const { data: videos = [] } = useQuery({
     queryKey: ["videos-picker", collectionId, search],
     queryFn: async () => {
-      let q = supabase.from("videos").select("id,title,length_sec,source_type,source_ref,collection_id").order("title");
+      let q = supabase
+        .from("videos")
+        .select("id,title,length_sec,source_type,source_ref,collection_id")
+        .order("title");
       if (collectionId) q = q.eq("collection_id", collectionId);
       if (search.trim()) q = q.ilike("title", `%${search}%`);
       const { data, error } = await q;
@@ -837,213 +678,65 @@ function VideoPickerDialog({ onAdd }: { onAdd: (v: Video[]) => void }) {
         <DialogTitle>Add videos to schedule</DialogTitle>
       </DialogHeader>
       <div className="flex gap-2">
-        <Select value={collectionId} onValueChange={(v) => setCollectionId(v === "__all" ? "" : v)}>
-          <SelectTrigger className="w-[200px]"><SelectValue placeholder="All collections" /></SelectTrigger>
+        <Select
+          value={collectionId}
+          onValueChange={(v) => setCollectionId(v === "__all" ? "" : v)}
+        >
+          <SelectTrigger className="w-[200px]">
+            <SelectValue placeholder="All collections" />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all">All collections</SelectItem>
-            {collections.map((c) => (<SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>))}
+            {collections.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <div className="relative flex-1">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search title…" className="pl-8" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search title…"
+            className="pl-8"
+          />
         </div>
       </div>
       <div className="max-h-[400px] overflow-auto rounded-md border">
         {videos.length === 0 ? (
-          <div className="p-6 text-center text-sm text-muted-foreground">No videos found</div>
+          <div className="p-6 text-center text-sm text-muted-foreground">
+            No videos found
+          </div>
         ) : (
           <ul className="divide-y">
             {videos.map((v) => (
               <li
                 key={v.id}
-                className={cn("flex cursor-pointer items-center gap-3 p-2 hover:bg-accent", picked.has(v.id) && "bg-accent")}
+                className={cn(
+                  "flex cursor-pointer items-center gap-3 p-2 hover:bg-accent",
+                  picked.has(v.id) && "bg-accent",
+                )}
                 onClick={() => toggle(v.id)}
               >
                 <input type="checkbox" readOnly checked={picked.has(v.id)} />
                 <span className="flex-1 truncate text-sm">{v.title}</span>
-                <Badge variant="outline" className="tabular-nums text-xs">{fmtDur(v.length_sec * 1000)}</Badge>
+                <Badge variant="outline" className="tabular-nums text-xs">
+                  {fmtDur(v.length_sec * 1000)}
+                </Badge>
               </li>
             ))}
           </ul>
         )}
       </div>
       <DialogFooter>
-        <span className="mr-auto text-xs text-muted-foreground">{picked.size} selected</span>
-        <Button disabled={picked.size === 0} onClick={() => onAdd(pickedList)}>Add {picked.size}</Button>
-      </DialogFooter>
-    </DialogContent>
-  );
-}
-
-function ChannelFormDialog({
-  mode,
-  initial,
-  onSubmit,
-  pending,
-  otherSlugs,
-}: {
-  mode: "create" | "edit";
-  initial?: { name: string; slug: string };
-  onSubmit: (v: { name: string; slug: string }) => void;
-  pending: boolean;
-  otherSlugs: string[];
-}) {
-  const [name, setName] = useState(initial?.name ?? "");
-  const [slug, setSlug] = useState(initial?.slug ?? "");
-  const [touchedSlug, setTouchedSlug] = useState(mode === "edit");
-
-  const nameRes = nameSchema.safeParse(name);
-  const slugRes = slugSchema.safeParse(slug);
-  const slugTaken = !!slug && otherSlugs.includes(slug);
-  const nameError = name && !nameRes.success ? nameRes.error.issues[0]?.message : null;
-  const slugError = slug
-    ? !slugRes.success
-      ? slugRes.error.issues[0]?.message
-      : slugTaken
-        ? "This slug is already used by another channel"
-        : null
-    : null;
-  const canSubmit = nameRes.success && slugRes.success && !slugTaken && !pending;
-
-  return (
-    <DialogContent className="max-w-sm">
-      <DialogHeader>
-        <DialogTitle>{mode === "create" ? "New channel" : "Rename channel"}</DialogTitle>
-      </DialogHeader>
-      <div className="space-y-3">
-        <div className="space-y-1">
-          <Label className="text-xs">Name</Label>
-          <Input
-            value={name}
-            maxLength={120}
-            onChange={(e) => {
-              const v = e.target.value;
-              setName(v);
-              if (!touchedSlug) setSlug(toSlug(v));
-            }}
-            aria-invalid={!!nameError}
-          />
-          {nameError && <p className="text-xs text-destructive">{nameError}</p>}
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs">Slug (a-z, 0-9, -)</Label>
-          <Input
-            value={slug}
-            maxLength={64}
-            onChange={(e) => {
-              setTouchedSlug(true);
-              setSlug(toSlug(e.target.value));
-            }}
-            aria-invalid={!!slugError}
-          />
-          {slugError && <p className="text-xs text-destructive">{slugError}</p>}
-          {mode === "edit" && initial && slug !== initial.slug && !slugError && (
-            <p className="text-xs text-muted-foreground">
-              Changing the slug breaks any existing embed URLs for this channel.
-            </p>
-          )}
-        </div>
-      </div>
-      <DialogFooter>
-        <Button disabled={!canSubmit} onClick={() => onSubmit({ name: name.trim(), slug })}>
-          {mode === "create" ? "Create" : "Save"}
+        <span className="mr-auto text-xs text-muted-foreground">
+          {picked.size} selected
+        </span>
+        <Button disabled={picked.size === 0} onClick={() => onAdd(pickedList)}>
+          Add {picked.size}
         </Button>
-      </DialogFooter>
-    </DialogContent>
-  );
-}
-
-function DeleteChannelDialog({
-  channelName,
-  scheduleCount,
-  onConfirm,
-  onCancel,
-  pending,
-}: {
-  channelName: string;
-  scheduleCount: number | null;
-  onConfirm: () => void;
-  onCancel: () => void;
-  pending: boolean;
-}) {
-  const [confirmText, setConfirmText] = useState("");
-  const hasSchedules = (scheduleCount ?? 0) > 0;
-  const requiredText = channelName;
-  const canDelete = confirmText.trim() === requiredText && !pending;
-
-  return (
-    <DialogContent className="max-w-md">
-      <DialogHeader>
-        <DialogTitle>Delete "{channelName}"?</DialogTitle>
-      </DialogHeader>
-      <div className="space-y-3 text-sm">
-        <p className="text-muted-foreground">
-          This permanently removes the channel
-          {scheduleCount === null
-            ? "…"
-            : hasSchedules
-              ? ` and its ${scheduleCount} schedule${scheduleCount === 1 ? "" : "s"} (including every scheduled item).`
-              : "."}
-          {" "}Videos and collections are kept.
-        </p>
-        {hasSchedules && (
-          <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
-            Warning: any embed currently playing this channel will stop working.
-          </div>
-        )}
-        <div className="space-y-1">
-          <Label className="text-xs">
-            Type <span className="font-mono font-semibold">{requiredText}</span> to confirm
-          </Label>
-          <Input
-            value={confirmText}
-            onChange={(e) => setConfirmText(e.target.value)}
-            placeholder={requiredText}
-            autoFocus
-          />
-        </div>
-      </div>
-      <DialogFooter>
-        <Button variant="outline" onClick={onCancel} disabled={pending}>Cancel</Button>
-        <Button variant="destructive" onClick={onConfirm} disabled={!canDelete}>
-          {pending ? "Deleting…" : "Delete channel"}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  );
-}
-
-function EditChannelDialog({
-  channel,
-  onSave,
-  pending,
-}: {
-  channel: Channel;
-  onSave: (v: { name: string; slug: string }) => void;
-  pending: boolean;
-}) {
-  const [name, setName] = useState(channel.name);
-  const [slug, setSlug] = useState(channel.slug);
-  useEffect(() => {
-    setName(channel.name);
-    setSlug(channel.slug);
-  }, [channel.id, channel.name, channel.slug]);
-  return (
-    <DialogContent className="max-w-sm">
-      <DialogHeader><DialogTitle>Edit channel</DialogTitle></DialogHeader>
-      <div className="space-y-3">
-        <div>
-          <Label className="text-xs">Name</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} />
-        </div>
-        <div>
-          <Label className="text-xs">Slug (a-z, 0-9, -)</Label>
-          <Input value={slug} onChange={(e) => setSlug(toSlug(e.target.value))} />
-        </div>
-      </div>
-      <DialogFooter>
-        <Button disabled={pending || !name || !slug} onClick={() => onSave({ name, slug })}>Save</Button>
       </DialogFooter>
     </DialogContent>
   );
