@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PlayoutChannelSlugRouteImport } from './routes/playout.$channelSlug'
 import { Route as EmbedChannelSlugRouteImport } from './routes/embed.$channelSlug'
+import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedSchedulesRouteImport } from './routes/_authenticated/schedules'
 import { Route as AuthenticatedPlayoutRouteImport } from './routes/_authenticated/playout'
 import { Route as AuthenticatedCollectionsRouteImport } from './routes/_authenticated/collections'
@@ -43,6 +44,11 @@ const EmbedChannelSlugRoute = EmbedChannelSlugRouteImport.update({
   id: '/embed/$channelSlug',
   path: '/embed/$channelSlug',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedSchedulesRoute = AuthenticatedSchedulesRouteImport.update({
   id: '/schedules',
@@ -78,6 +84,7 @@ export interface FileRoutesByFullPath {
   '/collections': typeof AuthenticatedCollectionsRoute
   '/playout': typeof AuthenticatedPlayoutRoute
   '/schedules': typeof AuthenticatedSchedulesRoute
+  '/settings': typeof AuthenticatedSettingsRoute
   '/embed/$channelSlug': typeof EmbedChannelSlugRoute
   '/playout/$channelSlug': typeof PlayoutChannelSlugRoute
   '/api/cron/autopilot': typeof ApiCronAutopilotRoute
@@ -89,6 +96,7 @@ export interface FileRoutesByTo {
   '/collections': typeof AuthenticatedCollectionsRoute
   '/playout': typeof AuthenticatedPlayoutRoute
   '/schedules': typeof AuthenticatedSchedulesRoute
+  '/settings': typeof AuthenticatedSettingsRoute
   '/embed/$channelSlug': typeof EmbedChannelSlugRoute
   '/playout/$channelSlug': typeof PlayoutChannelSlugRoute
   '/api/cron/autopilot': typeof ApiCronAutopilotRoute
@@ -102,6 +110,7 @@ export interface FileRoutesById {
   '/_authenticated/collections': typeof AuthenticatedCollectionsRoute
   '/_authenticated/playout': typeof AuthenticatedPlayoutRoute
   '/_authenticated/schedules': typeof AuthenticatedSchedulesRoute
+  '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/embed/$channelSlug': typeof EmbedChannelSlugRoute
   '/playout/$channelSlug': typeof PlayoutChannelSlugRoute
   '/api/cron/autopilot': typeof ApiCronAutopilotRoute
@@ -115,6 +124,7 @@ export interface FileRouteTypes {
     | '/collections'
     | '/playout'
     | '/schedules'
+    | '/settings'
     | '/embed/$channelSlug'
     | '/playout/$channelSlug'
     | '/api/cron/autopilot'
@@ -126,6 +136,7 @@ export interface FileRouteTypes {
     | '/collections'
     | '/playout'
     | '/schedules'
+    | '/settings'
     | '/embed/$channelSlug'
     | '/playout/$channelSlug'
     | '/api/cron/autopilot'
@@ -138,6 +149,7 @@ export interface FileRouteTypes {
     | '/_authenticated/collections'
     | '/_authenticated/playout'
     | '/_authenticated/schedules'
+    | '/_authenticated/settings'
     | '/embed/$channelSlug'
     | '/playout/$channelSlug'
     | '/api/cron/autopilot'
@@ -190,6 +202,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EmbedChannelSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/settings': {
+      id: '/_authenticated/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/schedules': {
       id: '/_authenticated/schedules'
       path: '/schedules'
@@ -232,6 +251,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCollectionsRoute: typeof AuthenticatedCollectionsRoute
   AuthenticatedPlayoutRoute: typeof AuthenticatedPlayoutRoute
   AuthenticatedSchedulesRoute: typeof AuthenticatedSchedulesRoute
+  AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedChannelsChannelSlugSettingsRoute: typeof AuthenticatedChannelsChannelSlugSettingsRoute
 }
 
@@ -239,6 +259,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCollectionsRoute: AuthenticatedCollectionsRoute,
   AuthenticatedPlayoutRoute: AuthenticatedPlayoutRoute,
   AuthenticatedSchedulesRoute: AuthenticatedSchedulesRoute,
+  AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedChannelsChannelSlugSettingsRoute:
     AuthenticatedChannelsChannelSlugSettingsRoute,
 }
