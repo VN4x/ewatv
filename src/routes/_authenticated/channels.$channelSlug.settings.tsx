@@ -286,6 +286,16 @@ function EditChannelView({
     onError: (e: any) => toast.error(e.message ?? "Delete failed"),
   });
 
+  const updateNowMut = useMutation({
+    mutationFn: async () => runAutopilotNow({ data: { channelId: channel.id } }),
+    onSuccess: (res: any) => {
+      const generated = res?.generated?.length ?? 0;
+      toast.success(generated > 0 ? `Refreshed ${generated} day(s) and pushed today` : "Pushed today's playlist");
+      qc.invalidateQueries({ queryKey: ["channel-by-slug"] });
+    },
+    onError: (e: any) => toast.error(e.message ?? "Update failed"),
+  });
+
   async function uploadLogo(file: File) {
     if (file.size > 5 * 1024 * 1024) {
       toast.error("Max 5 MB");
