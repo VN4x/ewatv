@@ -241,6 +241,7 @@ function EditChannelView({
         transition_ms: Math.max(0, Math.min(60000, Math.round(gapSec * 1000))),
         autopilot_push_hour: pushHour,
         overlays,
+        overlay_presets: presets,
       });
       // Keep legacy single-logo column in sync with the first enabled overlay so older
       // consumers and queries that read overlay_logo_url still get something useful.
