@@ -78,7 +78,19 @@ export function OverlaysEditor({ channelId, overlays, onChange, presets, onPrese
   const active = overlays.find((o) => o.id === activeId) ?? null;
 
   return (
-    <div className="grid gap-4 md:grid-cols-[1fr_1.2fr]">
+    <div className="space-y-4">
+      <PresetsBar
+        overlays={overlays}
+        presets={presets}
+        onPresetsChange={onPresetsChange}
+        onApply={(p) => {
+          // Re-id overlays on apply so they are independent from the preset definition.
+          const cloned = p.overlays.map((o) => ({ ...o, id: crypto.randomUUID() }));
+          onChange(cloned);
+          setActiveId(cloned[0]?.id ?? null);
+        }}
+      />
+      <div className="grid gap-4 md:grid-cols-[1fr_1.2fr]">
       {/* Left: list + add */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
