@@ -55,6 +55,7 @@ const defaults: ChannelPlayoutSettings = {
   autopilot_push_hour: DEFAULT_AUTOPILOT_PUSH_HOUR,
   transition_ms: DEFAULT_CHANNEL_TRANSITION_MS,
   overlays: [],
+  overlay_presets: [],
   last_mist_push_at: null,
   last_mist_push_error: null,
   last_mist_push_schedule_id: null,
