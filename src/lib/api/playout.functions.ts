@@ -38,7 +38,12 @@ export type NowPlayingResult = {
     videoId: string | null;
     isGap: boolean;
   } | null;
-  next: { title: string; description: string | null; startsAt: string } | null;
+  next: {
+    title: string;
+    description: string | null;
+    startsAt: string;
+    durationMs: number;
+  } | null;
 };
 
 const inputSchema = z.object({
@@ -114,14 +119,18 @@ export const nowPlaying = createServerFn({ method: "GET" })
       const snap = (it.source_snapshot ?? {}) as Record<string, unknown>;
       const isGap = snap.kind === "gap";
       const video = it.video as { id: string; title: string; description: string | null; hide_overlay: boolean } | null;
+      // While inside the transition_ms portion of the previous item, treat as a gap too
+      const start = new Date(it.start_at).getTime();
+      const inTransition = atMs >= start + it.duration_ms;
+      const treatAsGap = isGap || inTransition;
       return {
-        title: isGap ? "Intermission" : (video?.title ?? (snap.title as string) ?? "Untitled"),
-        description: isGap ? null : (video?.description ?? null),
+        title: treatAsGap ? "Intermission" : (video?.title ?? (snap.title as string) ?? "Untitled"),
+        description: treatAsGap ? null : (video?.description ?? null),
         startedAt: it.start_at,
         durationMs: it.duration_ms,
-        hideOverlay: isGap ? false : (video?.hide_overlay ?? false),
+        hideOverlay: treatAsGap ? false : (video?.hide_overlay ?? false),
         videoId: video?.id ?? null,
-        isGap,
+        isGap: treatAsGap,
       };
     };
 
@@ -134,6 +143,7 @@ export const nowPlaying = createServerFn({ method: "GET" })
             : ((nextItem.video as { title?: string } | null)?.title ?? "Untitled")),
           description: ((nextItem.video as { description?: string | null } | null)?.description ?? null),
           startsAt: nextItem.start_at,
+          durationMs: nextItem.duration_ms,
         }
       : null;
 

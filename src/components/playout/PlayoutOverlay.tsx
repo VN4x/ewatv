@@ -18,6 +18,10 @@ function fmt(ms: number): string {
   return `${m}:${r.toString().padStart(2, "0")}`;
 }
 
+function fmtTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 export function PlayoutOverlay({ videoEl, now, logoUrl, className }: Props) {
   const [visible, setVisible] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -68,8 +72,12 @@ export function PlayoutOverlay({ videoEl, now, logoUrl, className }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [videoEl]);
 
-  const showLogo = logoUrl && !(now?.current?.hideOverlay && !now?.current?.isGap);
+  // Logo always on, unless current video has hide_overlay set (burnt-in logo).
+  const isGap = !!now?.current?.isGap;
+  const showLogo = !!logoUrl && (isGap || !now?.current?.hideOverlay);
   const remainingMs = now?.current ? Math.max(0, now.current.durationMs - elapsedMs) : 0;
+  const next = now?.next;
+  const nextEnd = next ? new Date(new Date(next.startsAt).getTime() + next.durationMs).toISOString() : null;
 
   return (
     <div
@@ -80,15 +88,36 @@ export function PlayoutOverlay({ videoEl, now, logoUrl, className }: Props) {
     >
       {showLogo && (
         <img
-          src={logoUrl}
+          src={logoUrl!}
           alt=""
-          className="pointer-events-none absolute left-3 top-3 w-[8%] min-w-[48px] opacity-90"
+          className="pointer-events-none absolute left-3 top-3 z-20 w-[8%] min-w-[48px] opacity-90"
         />
+      )}
+
+      {/* NEXT card during transitions */}
+      {isGap && next && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="mx-6 max-w-2xl text-center text-white">
+            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-white/60">
+              Next
+            </div>
+            <div className="text-3xl font-bold leading-tight sm:text-4xl">{next.title}</div>
+            {next.description && (
+              <div className="mt-3 line-clamp-2 text-base text-white/80 sm:text-lg">
+                {next.description}
+              </div>
+            )}
+            <div className="mt-4 text-sm tabular-nums text-white/70">
+              {fmtTime(next.startsAt)}
+              {nextEnd && ` – ${fmtTime(nextEnd)}`}
+            </div>
+          </div>
+        </div>
       )}
 
       <div
         className={cn(
-          "pointer-events-none absolute inset-x-0 bottom-0 transition-opacity motion-reduce:transition-none",
+          "pointer-events-none absolute inset-x-0 bottom-0 z-30 transition-opacity motion-reduce:transition-none",
           visible ? "opacity-100" : "opacity-0",
         )}
       >
@@ -107,9 +136,9 @@ export function PlayoutOverlay({ videoEl, now, logoUrl, className }: Props) {
                   {fmt(elapsedMs)} / {fmt(now.current.durationMs)} · {fmt(remainingMs)} remaining
                 </div>
               )}
-              {now?.next && (
+              {next && (
                 <div className="mt-2 text-xs text-white/70">
-                  Next: <span className="font-medium text-white/90">{now.next.title}</span>
+                  Next: <span className="font-medium text-white/90">{next.title}</span>
                 </div>
               )}
             </div>
