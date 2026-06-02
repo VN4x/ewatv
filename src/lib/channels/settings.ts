@@ -1,15 +1,35 @@
 import type { Json } from "@/integrations/supabase/types";
 
+export const OVERLAY_ANCHORS = [
+  "tl", "tc", "tr",
+  "ml", "mc", "mr",
+  "bl", "bc", "br",
+] as const;
+export type OverlayAnchor = (typeof OVERLAY_ANCHORS)[number];
+
+export type OverlayConfig = {
+  id: string;
+  name: string;
+  url: string;
+  anchor: OverlayAnchor;
+  /** Horizontal nudge, % of viewport width (-50..50). Positive = right. */
+  offsetXPct: number;
+  /** Vertical nudge, % of viewport height (-50..50). Positive = down. */
+  offsetYPct: number;
+  /** Width as % of viewport width (1..50). Height = auto (preserves aspect). */
+  widthPct: number;
+  /** 0..1 */
+  opacity: number;
+  enabled: boolean;
+};
+
 export type ChannelPlayoutSettings = {
   playout_active: boolean;
-  /** Stays on until user turns off; cron fills the weekly horizon. */
   autopilot_enabled: boolean;
-  /** How many calendar days to maintain (default 7). */
   autopilot_week_days: number;
-  /** Hour-of-day (0–23) in autopilot timezone to run the daily Mist push. Default 4. */
   autopilot_push_hour: number;
-  /** Channel-wide transition gap between items, in milliseconds (0–60000). */
   transition_ms: number;
+  overlays: OverlayConfig[];
   last_mist_push_at: string | null;
   last_mist_push_error: string | null;
   last_mist_push_schedule_id: string | null;
@@ -18,6 +38,7 @@ export type ChannelPlayoutSettings = {
 
 export const DEFAULT_CHANNEL_TRANSITION_MS = 7000;
 export const DEFAULT_AUTOPILOT_PUSH_HOUR = 4;
+export const MAX_OVERLAYS = 6;
 
 const defaults: ChannelPlayoutSettings = {
   playout_active: false,
@@ -25,6 +46,7 @@ const defaults: ChannelPlayoutSettings = {
   autopilot_week_days: 7,
   autopilot_push_hour: DEFAULT_AUTOPILOT_PUSH_HOUR,
   transition_ms: DEFAULT_CHANNEL_TRANSITION_MS,
+  overlays: [],
   last_mist_push_at: null,
   last_mist_push_error: null,
   last_mist_push_schedule_id: null,
@@ -41,18 +63,65 @@ function clampHour(h: unknown): number {
   return Math.max(0, Math.min(23, Math.floor(h)));
 }
 
+function clampNum(n: unknown, min: number, max: number, fallback: number): number {
+  if (typeof n !== "number" || !Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
+export function defaultOverlay(partial: Partial<OverlayConfig> = {}): OverlayConfig {
+  return {
+    id: crypto.randomUUID(),
+    name: "Logo",
+    url: "",
+    anchor: "tl",
+    offsetXPct: 2,
+    offsetYPct: 2,
+    widthPct: 8,
+    opacity: 0.9,
+    enabled: true,
+    ...partial,
+  };
+}
+
+function parseOverlay(raw: unknown): OverlayConfig | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const url = typeof o.url === "string" ? o.url : "";
+  if (!url) return null;
+  const anchor = (typeof o.anchor === "string" && (OVERLAY_ANCHORS as readonly string[]).includes(o.anchor))
+    ? (o.anchor as OverlayAnchor)
+    : "tl";
+  return {
+    id: typeof o.id === "string" ? o.id : crypto.randomUUID(),
+    name: typeof o.name === "string" ? o.name : "Logo",
+    url,
+    anchor,
+    offsetXPct: clampNum(o.offsetXPct, -50, 50, 2),
+    offsetYPct: clampNum(o.offsetYPct, -50, 50, 2),
+    widthPct: clampNum(o.widthPct, 1, 50, 8),
+    opacity: clampNum(o.opacity, 0, 1, 0.9),
+    enabled: o.enabled !== false,
+  };
+}
+
 export function parseChannelPlayoutSettings(settings: Json | null | undefined): ChannelPlayoutSettings {
   if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
-    return { ...defaults };
+    return { ...defaults, overlays: [] };
   }
   const s = settings as Record<string, unknown>;
   const weekDays = typeof s.autopilot_week_days === "number" ? s.autopilot_week_days : 7;
+  const overlaysRaw = Array.isArray(s.overlays) ? s.overlays : [];
+  const overlays = overlaysRaw
+    .map(parseOverlay)
+    .filter((o): o is OverlayConfig => o !== null)
+    .slice(0, MAX_OVERLAYS);
   return {
     playout_active: s.playout_active === true,
     autopilot_enabled: s.autopilot_enabled === true,
     autopilot_week_days: weekDays >= 1 && weekDays <= 14 ? Math.floor(weekDays) : 7,
     autopilot_push_hour: clampHour(s.autopilot_push_hour),
     transition_ms: clampTransition(s.transition_ms),
+    overlays,
     last_mist_push_at: typeof s.last_mist_push_at === "string" ? s.last_mist_push_at : null,
     last_mist_push_error:
       typeof s.last_mist_push_error === "string" ? s.last_mist_push_error : null,
@@ -72,6 +141,10 @@ export function mergePlayoutIntoSettings(
       ? { ...(settings as Record<string, unknown>) }
       : {};
   const current = parseChannelPlayoutSettings(settings);
+  const overlays = (patch.overlays ?? current.overlays)
+    .map((o) => parseOverlay(o))
+    .filter((o): o is OverlayConfig => o !== null)
+    .slice(0, MAX_OVERLAYS);
   const merged: Record<string, unknown> = {
     ...base,
     playout_active: patch.playout_active ?? current.playout_active,
@@ -81,6 +154,7 @@ export function mergePlayoutIntoSettings(
       patch.autopilot_push_hour !== undefined ? clampHour(patch.autopilot_push_hour) : current.autopilot_push_hour,
     transition_ms:
       patch.transition_ms !== undefined ? clampTransition(patch.transition_ms) : current.transition_ms,
+    overlays: overlays as unknown as Json,
     last_mist_push_at:
       patch.last_mist_push_at !== undefined ? patch.last_mist_push_at : current.last_mist_push_at,
     last_mist_push_error:
@@ -99,7 +173,17 @@ export function mergePlayoutIntoSettings(
   return merged as Json;
 }
 
-/** Calendar date (yyyy-MM-dd) that should trigger a live Mist push when playout is active. */
+/** Resolve overlays from settings, falling back to a single default overlay from a legacy logo URL. */
+export function resolveOverlays(
+  settings: Json | null | undefined,
+  legacyLogoUrl: string | null | undefined,
+): OverlayConfig[] {
+  const parsed = parseChannelPlayoutSettings(settings);
+  if (parsed.overlays.length > 0) return parsed.overlays.filter((o) => o.enabled && o.url);
+  if (legacyLogoUrl) return [defaultOverlay({ url: legacyLogoUrl })];
+  return [];
+}
+
 export function isAirDateToday(scheduleDate: string, now = new Date()): boolean {
   const today = now.toISOString().slice(0, 10);
   return scheduleDate === today;
