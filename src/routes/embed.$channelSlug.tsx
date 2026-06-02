@@ -35,6 +35,7 @@ function EmbedPage() {
       <PlayoutOverlay
         videoEl={playerRef.current?.video ?? null}
         now={now}
+        overlays={now?.overlays}
         logoUrl={now?.overlayLogoUrl ?? null}
       />
       <MountTrigger onMount={() => force((n) => n + 1)} />

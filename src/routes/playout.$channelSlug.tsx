@@ -36,6 +36,7 @@ function PublicPlayoutPage() {
         <PlayoutOverlay
           videoEl={playerRef.current?.video ?? null}
           now={now}
+          overlays={now?.overlays}
           logoUrl={now?.overlayLogoUrl ?? "/overlay-logo.png"}
         />
         {/* trigger overlay re-render once video el mounts */}
