@@ -23,6 +23,12 @@ export type OverlayConfig = {
   enabled: boolean;
 };
 
+export type OverlayPreset = {
+  id: string;
+  name: string;
+  overlays: OverlayConfig[];
+};
+
 export type ChannelPlayoutSettings = {
   playout_active: boolean;
   autopilot_enabled: boolean;
@@ -30,6 +36,7 @@ export type ChannelPlayoutSettings = {
   autopilot_push_hour: number;
   transition_ms: number;
   overlays: OverlayConfig[];
+  overlay_presets: OverlayPreset[];
   last_mist_push_at: string | null;
   last_mist_push_error: string | null;
   last_mist_push_schedule_id: string | null;
@@ -39,6 +46,7 @@ export type ChannelPlayoutSettings = {
 export const DEFAULT_CHANNEL_TRANSITION_MS = 7000;
 export const DEFAULT_AUTOPILOT_PUSH_HOUR = 4;
 export const MAX_OVERLAYS = 6;
+export const MAX_OVERLAY_PRESETS = 12;
 
 const defaults: ChannelPlayoutSettings = {
   playout_active: false,
