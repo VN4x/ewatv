@@ -18,6 +18,7 @@ import { Route as AuthenticatedSchedulesRouteImport } from './routes/_authentica
 import { Route as AuthenticatedPlayoutRouteImport } from './routes/_authenticated/playout'
 import { Route as AuthenticatedCollectionsRouteImport } from './routes/_authenticated/collections'
 import { Route as ApiCronAutopilotRouteImport } from './routes/api/cron/autopilot'
+import { Route as AuthenticatedChannelsChannelSlugSettingsRouteImport } from './routes/_authenticated/channels.$channelSlug.settings'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -64,6 +65,12 @@ const ApiCronAutopilotRoute = ApiCronAutopilotRouteImport.update({
   path: '/api/cron/autopilot',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedChannelsChannelSlugSettingsRoute =
+  AuthenticatedChannelsChannelSlugSettingsRouteImport.update({
+    id: '/channels/$channelSlug/settings',
+    path: '/channels/$channelSlug/settings',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -74,6 +81,7 @@ export interface FileRoutesByFullPath {
   '/embed/$channelSlug': typeof EmbedChannelSlugRoute
   '/playout/$channelSlug': typeof PlayoutChannelSlugRoute
   '/api/cron/autopilot': typeof ApiCronAutopilotRoute
+  '/channels/$channelSlug/settings': typeof AuthenticatedChannelsChannelSlugSettingsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -84,6 +92,7 @@ export interface FileRoutesByTo {
   '/embed/$channelSlug': typeof EmbedChannelSlugRoute
   '/playout/$channelSlug': typeof PlayoutChannelSlugRoute
   '/api/cron/autopilot': typeof ApiCronAutopilotRoute
+  '/channels/$channelSlug/settings': typeof AuthenticatedChannelsChannelSlugSettingsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -96,6 +105,7 @@ export interface FileRoutesById {
   '/embed/$channelSlug': typeof EmbedChannelSlugRoute
   '/playout/$channelSlug': typeof PlayoutChannelSlugRoute
   '/api/cron/autopilot': typeof ApiCronAutopilotRoute
+  '/_authenticated/channels/$channelSlug/settings': typeof AuthenticatedChannelsChannelSlugSettingsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -108,6 +118,7 @@ export interface FileRouteTypes {
     | '/embed/$channelSlug'
     | '/playout/$channelSlug'
     | '/api/cron/autopilot'
+    | '/channels/$channelSlug/settings'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -118,6 +129,7 @@ export interface FileRouteTypes {
     | '/embed/$channelSlug'
     | '/playout/$channelSlug'
     | '/api/cron/autopilot'
+    | '/channels/$channelSlug/settings'
   id:
     | '__root__'
     | '/'
@@ -129,6 +141,7 @@ export interface FileRouteTypes {
     | '/embed/$channelSlug'
     | '/playout/$channelSlug'
     | '/api/cron/autopilot'
+    | '/_authenticated/channels/$channelSlug/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -205,6 +218,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCronAutopilotRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/channels/$channelSlug/settings': {
+      id: '/_authenticated/channels/$channelSlug/settings'
+      path: '/channels/$channelSlug/settings'
+      fullPath: '/channels/$channelSlug/settings'
+      preLoaderRoute: typeof AuthenticatedChannelsChannelSlugSettingsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
   }
 }
 
@@ -212,12 +232,15 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCollectionsRoute: typeof AuthenticatedCollectionsRoute
   AuthenticatedPlayoutRoute: typeof AuthenticatedPlayoutRoute
   AuthenticatedSchedulesRoute: typeof AuthenticatedSchedulesRoute
+  AuthenticatedChannelsChannelSlugSettingsRoute: typeof AuthenticatedChannelsChannelSlugSettingsRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCollectionsRoute: AuthenticatedCollectionsRoute,
   AuthenticatedPlayoutRoute: AuthenticatedPlayoutRoute,
   AuthenticatedSchedulesRoute: AuthenticatedSchedulesRoute,
+  AuthenticatedChannelsChannelSlugSettingsRoute:
+    AuthenticatedChannelsChannelSlugSettingsRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
