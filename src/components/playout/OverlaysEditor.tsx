@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, ChevronUp, Plus, Trash2, Upload } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bookmark, ChevronDown, ChevronUp, Plus, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -8,13 +8,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
   defaultOverlay,
   MAX_OVERLAYS,
+  MAX_OVERLAY_PRESETS,
   OVERLAY_ANCHORS,
   type OverlayAnchor,
   type OverlayConfig,
+  type OverlayPreset,
 } from "@/lib/channels/settings";
 import { overlayPositionStyle } from "@/components/playout/PlayoutOverlay";
 
@@ -22,6 +25,8 @@ type Props = {
   channelId: string;
   overlays: OverlayConfig[];
   onChange: (next: OverlayConfig[]) => void;
+  presets: OverlayPreset[];
+  onPresetsChange: (next: OverlayPreset[]) => void;
 };
 
 const ANCHOR_LABELS: Record<OverlayAnchor, string> = {
@@ -29,6 +34,13 @@ const ANCHOR_LABELS: Record<OverlayAnchor, string> = {
   ml: "Middle-left", mc: "Center", mr: "Middle-right",
   bl: "Bottom-left", bc: "Bottom-center", br: "Bottom-right",
 };
+
+const CORNER_PRESETS: { anchor: OverlayAnchor; label: string }[] = [
+  { anchor: "tl", label: "Upper-left" },
+  { anchor: "tr", label: "Upper-right" },
+  { anchor: "bl", label: "Lower-left" },
+  { anchor: "br", label: "Lower-right" },
+];
 
 export function OverlaysEditor({ channelId, overlays, onChange }: Props) {
   const [activeId, setActiveId] = useState<string | null>(overlays[0]?.id ?? null);
