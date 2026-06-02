@@ -131,7 +131,7 @@ function SchedulesPage() {
     [channels, channelId],
   );
   const channelSettings = useMemo(
-    () => parseChannelPlayoutSettings(selectedChannel?.settings ?? null),
+    () => parseChannelPlayoutSettings((selectedChannel?.settings ?? null) as never),
     [selectedChannel],
   );
 
