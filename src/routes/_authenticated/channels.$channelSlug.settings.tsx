@@ -473,6 +473,42 @@ function EditChannelView({
 
       <Card>
         <CardHeader>
+          <CardTitle>Daily playlist update</CardTitle>
+          <CardDescription>
+            Hour-of-day (autopilot timezone) when the next day's playlist is pushed to the live
+            stream. Applies until you change it. Use <em>Update now</em> after manual edits.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>Update hour (0–23)</Label>
+            <Input
+              type="number"
+              min={0}
+              max={23}
+              value={pushHour}
+              onChange={(e) => setPushHour(Math.max(0, Math.min(23, Math.floor(Number(e.target.value) || 0))))}
+              className="w-32"
+            />
+            <p className="text-xs text-muted-foreground">
+              Default {DEFAULT_AUTOPILOT_PUSH_HOUR}:00. The cron job runs hourly and pushes at this hour only.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => updateNowMut.mutate()}
+            disabled={updateNowMut.isPending}
+          >
+            {updateNowMut.isPending ? "Updating…" : "Update now"}
+          </Button>
+        </CardContent>
+      </Card>
+
+
+
+      <Card>
+        <CardHeader>
           <CardTitle>Embed</CardTitle>
           <CardDescription>
             Paste this snippet on any page. It autoplays (muted by browser policy), is fully
