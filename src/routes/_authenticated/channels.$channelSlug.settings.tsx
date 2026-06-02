@@ -198,6 +198,7 @@ function EditChannelView({
   const [logoUrl, setLogoUrl] = useState(channel.overlay_logo_url ?? "");
   const [fallback, setFallback] = useState(channel.fallback_youtube_url ?? "");
   const [gapSec, setGapSec] = useState<number>(Math.round(playout.transition_ms / 1000));
+  const [pushHour, setPushHour] = useState<number>(playout.autopilot_push_hour);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -208,16 +209,18 @@ function EditChannelView({
     setLogoUrl(channel.overlay_logo_url ?? "");
     setFallback(channel.fallback_youtube_url ?? "");
     setGapSec(Math.round(playout.transition_ms / 1000));
-  }, [channel, playout.transition_ms]);
+    setPushHour(playout.autopilot_push_hour);
+  }, [channel, playout.transition_ms, playout.autopilot_push_hour]);
 
   const nameRes = nameSchema.safeParse(name);
   const slugRes = slugSchema.safeParse(slug);
   const fallbackRes = fallback ? urlSchema.safeParse(fallback) : { success: true as const };
   const logoRes = logoUrl ? urlSchema.safeParse(logoUrl) : { success: true as const };
   const gapValid = Number.isFinite(gapSec) && gapSec >= 0 && gapSec <= 60;
+  const hourValid = Number.isInteger(pushHour) && pushHour >= 0 && pushHour <= 23;
 
   const canSave =
-    nameRes.success && slugRes.success && fallbackRes.success && logoRes.success && gapValid;
+    nameRes.success && slugRes.success && fallbackRes.success && logoRes.success && gapValid && hourValid;
 
   const saveMut = useMutation({
     mutationFn: async () => {
