@@ -77,6 +77,8 @@ export function mergePlayoutIntoSettings(
     playout_active: patch.playout_active ?? current.playout_active,
     autopilot_enabled: patch.autopilot_enabled ?? current.autopilot_enabled,
     autopilot_week_days: patch.autopilot_week_days ?? current.autopilot_week_days,
+    autopilot_push_hour:
+      patch.autopilot_push_hour !== undefined ? clampHour(patch.autopilot_push_hour) : current.autopilot_push_hour,
     transition_ms:
       patch.transition_ms !== undefined ? clampTransition(patch.transition_ms) : current.transition_ms,
     last_mist_push_at:
