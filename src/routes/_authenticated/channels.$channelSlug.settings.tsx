@@ -210,10 +210,11 @@ function EditChannelView({
     setName(channel.name);
     setSlug(channel.slug);
     setOverlays(playout.overlays);
+    setPresets(playout.overlay_presets);
     setFallback(channel.fallback_youtube_url ?? "");
     setGapSec(Math.round(playout.transition_ms / 1000));
     setPushHour(playout.autopilot_push_hour);
-  }, [channel, playout.transition_ms, playout.autopilot_push_hour, playout.overlays]);
+  }, [channel, playout.transition_ms, playout.autopilot_push_hour, playout.overlays, playout.overlay_presets]);
 
   const nameRes = nameSchema.safeParse(name);
   const slugRes = slugSchema.safeParse(slug);
