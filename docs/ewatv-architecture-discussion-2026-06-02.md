@@ -1,5 +1,27 @@
 # ewatv — architecture discussion notes (2026-06-02)
 
+**Repo path:** `docs/ewatv-architecture-discussion-2026-06-02.md`
+
+## Table of contents
+
+1. [Current stack](#1-current-stack-on-main-as-of-pull)
+2. [Multi-channel](#2-multi-channel-how-separation-works)
+3. [Mist vs hls.js player](#3-mists-player-vs-our-hlsjs-player)
+4. [Daily playout vs weekly DB](#4-daily-playout-vs-weekly-db-autopilot)
+5. [Cloud → viewer + security](#5-revised-playout-direction-cloud--viewer)
+6. [With / without Mist](#6-with-mist-vs-without-mist)
+7. [VPS storage lifecycle](#7-vps-storage-lifecycle-if-keeping-mist--local-files)
+8. [Bunny vs Mega](#8-bunny-stream-vs-mega)
+9. [Cost sketch](#9-cost-sketch-1-tb-library-200-concurrent-viewers)
+10. [Codec rules](#10-codec--container-without-vps-ffmpeg-farm)
+11. [Dropped / deferred](#11-what-we-explicitly-dropped-or-deferred)
+12. [Implementation priorities](#12-implementation-priorities-suggested)
+13. [Skills & PRs](#13-lovable--agent-artifacts)
+14. [Decision summary](#14-one-page-decision-summary)
+15. [Ops checklist](#15-ops--next-steps-checklist)
+
+---
+
 Consolidated notes from planning sessions: Mist vs client playout, Mega vs Bunny, VPS storage, security model, multi-channel, Lovable sync, and cost sizing.
 
 **Operational assumptions (provided later in the day):**
@@ -323,5 +345,34 @@ Mixing `.mkv` / HEVC in one Mist `.pls` or client playlist still causes freezes 
 | 200 viewers, 2–4 GB files? | Size library on **Bunny/storage $**; budget **CDN egress**; avoid **1 TB VPS** |
 
 ---
+
+
+
+---
+
+## 15. Ops & next-steps checklist
+
+### Git / Lovable sync
+
+- `main` includes PR #2 (autopilot + playout merge) and PR #3 (settings, embed, overlays).
+
+### VPS cron (hourly, per-channel update hour)
+
+```cron
+CRON_TZ=Europe/Helsinki
+0 * * * * /path/to/ewatv/deploy/cron/autopilot.sh >> /var/log/ewatv-autopilot.log 2>&1
+```
+
+### Lovable secrets (typical)
+
+`VITE_MIST_HLS_BASE`, `MIST_PLAYLIST_SYNC_*`, `MIST_API_*`, `MEGA_S3_*`, `AUTOPILOT_CRON_SECRET`, `AUTOPILOT_TIMEZONE`, `SUPABASE_SERVICE_ROLE_KEY`
+
+### Architecture decisions still open
+
+- [ ] Default playout: Bunny + client linear vs Mist + cache vs Mist + HTTPS pull
+- [ ] `signPlaybackWindow` + Worker prefetch
+- [ ] Admin-only RLS on catalog/schedule writes
+- [ ] Mega → Bunny migration for ~1 TB library
+
 
 *Generated from architecture planning discussions. Update as decisions are implemented.*
