@@ -24,6 +24,7 @@ import {
   DEFAULT_CHANNEL_TRANSITION_MS,
   DEFAULT_AUTOPILOT_PUSH_HOUR,
   type OverlayConfig,
+  type OverlayPreset,
 } from "@/lib/channels/settings";
 import { OverlaysEditor } from "@/components/playout/OverlaysEditor";
 import { runAutopilotNow } from "@/lib/api/autopilot.functions";
