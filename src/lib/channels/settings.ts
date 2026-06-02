@@ -51,6 +51,7 @@ export function parseChannelPlayoutSettings(settings: Json | null | undefined): 
     playout_active: s.playout_active === true,
     autopilot_enabled: s.autopilot_enabled === true,
     autopilot_week_days: weekDays >= 1 && weekDays <= 14 ? Math.floor(weekDays) : 7,
+    autopilot_push_hour: clampHour(s.autopilot_push_hour),
     transition_ms: clampTransition(s.transition_ms),
     last_mist_push_at: typeof s.last_mist_push_at === "string" ? s.last_mist_push_at : null,
     last_mist_push_error:
