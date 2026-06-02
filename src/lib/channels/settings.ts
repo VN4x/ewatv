@@ -23,6 +23,12 @@ export type OverlayConfig = {
   enabled: boolean;
 };
 
+export type OverlayPreset = {
+  id: string;
+  name: string;
+  overlays: OverlayConfig[];
+};
+
 export type ChannelPlayoutSettings = {
   playout_active: boolean;
   autopilot_enabled: boolean;
@@ -30,6 +36,7 @@ export type ChannelPlayoutSettings = {
   autopilot_push_hour: number;
   transition_ms: number;
   overlays: OverlayConfig[];
+  overlay_presets: OverlayPreset[];
   last_mist_push_at: string | null;
   last_mist_push_error: string | null;
   last_mist_push_schedule_id: string | null;
@@ -39,6 +46,7 @@ export type ChannelPlayoutSettings = {
 export const DEFAULT_CHANNEL_TRANSITION_MS = 7000;
 export const DEFAULT_AUTOPILOT_PUSH_HOUR = 4;
 export const MAX_OVERLAYS = 6;
+export const MAX_OVERLAY_PRESETS = 12;
 
 const defaults: ChannelPlayoutSettings = {
   playout_active: false,
@@ -47,6 +55,7 @@ const defaults: ChannelPlayoutSettings = {
   autopilot_push_hour: DEFAULT_AUTOPILOT_PUSH_HOUR,
   transition_ms: DEFAULT_CHANNEL_TRANSITION_MS,
   overlays: [],
+  overlay_presets: [],
   last_mist_push_at: null,
   last_mist_push_error: null,
   last_mist_push_schedule_id: null,
@@ -115,6 +124,11 @@ export function parseChannelPlayoutSettings(settings: Json | null | undefined): 
     .map(parseOverlay)
     .filter((o): o is OverlayConfig => o !== null)
     .slice(0, MAX_OVERLAYS);
+  const presetsRaw = Array.isArray(s.overlay_presets) ? s.overlay_presets : [];
+  const overlay_presets = presetsRaw
+    .map(parsePreset)
+    .filter((p): p is OverlayPreset => p !== null)
+    .slice(0, MAX_OVERLAY_PRESETS);
   return {
     playout_active: s.playout_active === true,
     autopilot_enabled: s.autopilot_enabled === true,
@@ -122,6 +136,7 @@ export function parseChannelPlayoutSettings(settings: Json | null | undefined): 
     autopilot_push_hour: clampHour(s.autopilot_push_hour),
     transition_ms: clampTransition(s.transition_ms),
     overlays,
+    overlay_presets,
     last_mist_push_at: typeof s.last_mist_push_at === "string" ? s.last_mist_push_at : null,
     last_mist_push_error:
       typeof s.last_mist_push_error === "string" ? s.last_mist_push_error : null,
@@ -129,6 +144,23 @@ export function parseChannelPlayoutSettings(settings: Json | null | undefined): 
       typeof s.last_mist_push_schedule_id === "string" ? s.last_mist_push_schedule_id : null,
     autopilot_last_run_at:
       typeof s.autopilot_last_run_at === "string" ? s.autopilot_last_run_at : null,
+  };
+}
+
+function parsePreset(raw: unknown): OverlayPreset | null {
+  if (!raw || typeof raw !== "object") return null;
+  const p = raw as Record<string, unknown>;
+  const name = typeof p.name === "string" ? p.name.trim() : "";
+  if (!name) return null;
+  const overlaysRaw = Array.isArray(p.overlays) ? p.overlays : [];
+  const overlays = overlaysRaw
+    .map(parseOverlay)
+    .filter((o): o is OverlayConfig => o !== null)
+    .slice(0, MAX_OVERLAYS);
+  return {
+    id: typeof p.id === "string" ? p.id : crypto.randomUUID(),
+    name: name.slice(0, 60),
+    overlays,
   };
 }
 
@@ -145,6 +177,10 @@ export function mergePlayoutIntoSettings(
     .map((o) => parseOverlay(o))
     .filter((o): o is OverlayConfig => o !== null)
     .slice(0, MAX_OVERLAYS);
+  const overlay_presets = (patch.overlay_presets ?? current.overlay_presets)
+    .map((p) => parsePreset(p))
+    .filter((p): p is OverlayPreset => p !== null)
+    .slice(0, MAX_OVERLAY_PRESETS);
   const merged: Record<string, unknown> = {
     ...base,
     playout_active: patch.playout_active ?? current.playout_active,
@@ -155,6 +191,7 @@ export function mergePlayoutIntoSettings(
     transition_ms:
       patch.transition_ms !== undefined ? clampTransition(patch.transition_ms) : current.transition_ms,
     overlays: overlays as unknown as Json,
+    overlay_presets: overlay_presets as unknown as Json,
     last_mist_push_at:
       patch.last_mist_push_at !== undefined ? patch.last_mist_push_at : current.last_mist_push_at,
     last_mist_push_error:

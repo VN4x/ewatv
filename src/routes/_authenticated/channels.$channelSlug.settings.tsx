@@ -24,6 +24,7 @@ import {
   DEFAULT_CHANNEL_TRANSITION_MS,
   DEFAULT_AUTOPILOT_PUSH_HOUR,
   type OverlayConfig,
+  type OverlayPreset,
 } from "@/lib/channels/settings";
 import { OverlaysEditor } from "@/components/playout/OverlaysEditor";
 import { runAutopilotNow } from "@/lib/api/autopilot.functions";
@@ -199,6 +200,7 @@ function EditChannelView({
   const [name, setName] = useState(channel.name);
   const [slug, setSlug] = useState(channel.slug);
   const [overlays, setOverlays] = useState<OverlayConfig[]>(playout.overlays);
+  const [presets, setPresets] = useState<OverlayPreset[]>(playout.overlay_presets);
   const [fallback, setFallback] = useState(channel.fallback_youtube_url ?? "");
   const [gapSec, setGapSec] = useState<number>(Math.round(playout.transition_ms / 1000));
   const [pushHour, setPushHour] = useState<number>(playout.autopilot_push_hour);
@@ -208,10 +210,11 @@ function EditChannelView({
     setName(channel.name);
     setSlug(channel.slug);
     setOverlays(playout.overlays);
+    setPresets(playout.overlay_presets);
     setFallback(channel.fallback_youtube_url ?? "");
     setGapSec(Math.round(playout.transition_ms / 1000));
     setPushHour(playout.autopilot_push_hour);
-  }, [channel, playout.transition_ms, playout.autopilot_push_hour, playout.overlays]);
+  }, [channel, playout.transition_ms, playout.autopilot_push_hour, playout.overlays, playout.overlay_presets]);
 
   const nameRes = nameSchema.safeParse(name);
   const slugRes = slugSchema.safeParse(slug);
@@ -238,6 +241,7 @@ function EditChannelView({
         transition_ms: Math.max(0, Math.min(60000, Math.round(gapSec * 1000))),
         autopilot_push_hour: pushHour,
         overlays,
+        overlay_presets: presets,
       });
       // Keep legacy single-logo column in sync with the first enabled overlay so older
       // consumers and queries that read overlay_logo_url still get something useful.
@@ -370,7 +374,13 @@ function EditChannelView({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <OverlaysEditor channelId={channel.id} overlays={overlays} onChange={setOverlays} />
+          <OverlaysEditor
+            channelId={channel.id}
+            overlays={overlays}
+            onChange={setOverlays}
+            presets={presets}
+            onPresetsChange={setPresets}
+          />
         </CardContent>
       </Card>
 

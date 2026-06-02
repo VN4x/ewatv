@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, ChevronUp, Plus, Trash2, Upload } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bookmark, ChevronDown, ChevronUp, Plus, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -8,13 +8,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
   defaultOverlay,
   MAX_OVERLAYS,
+  MAX_OVERLAY_PRESETS,
   OVERLAY_ANCHORS,
   type OverlayAnchor,
   type OverlayConfig,
+  type OverlayPreset,
 } from "@/lib/channels/settings";
 import { overlayPositionStyle } from "@/components/playout/PlayoutOverlay";
 
@@ -22,6 +25,8 @@ type Props = {
   channelId: string;
   overlays: OverlayConfig[];
   onChange: (next: OverlayConfig[]) => void;
+  presets: OverlayPreset[];
+  onPresetsChange: (next: OverlayPreset[]) => void;
 };
 
 const ANCHOR_LABELS: Record<OverlayAnchor, string> = {
@@ -30,7 +35,14 @@ const ANCHOR_LABELS: Record<OverlayAnchor, string> = {
   bl: "Bottom-left", bc: "Bottom-center", br: "Bottom-right",
 };
 
-export function OverlaysEditor({ channelId, overlays, onChange }: Props) {
+const CORNER_PRESETS: { anchor: OverlayAnchor; label: string }[] = [
+  { anchor: "tl", label: "Upper-left" },
+  { anchor: "tr", label: "Upper-right" },
+  { anchor: "bl", label: "Lower-left" },
+  { anchor: "br", label: "Lower-right" },
+];
+
+export function OverlaysEditor({ channelId, overlays, onChange, presets, onPresetsChange }: Props) {
   const [activeId, setActiveId] = useState<string | null>(overlays[0]?.id ?? null);
 
   useEffect(() => {
@@ -66,7 +78,19 @@ export function OverlaysEditor({ channelId, overlays, onChange }: Props) {
   const active = overlays.find((o) => o.id === activeId) ?? null;
 
   return (
-    <div className="grid gap-4 md:grid-cols-[1fr_1.2fr]">
+    <div className="space-y-4">
+      <PresetsBar
+        overlays={overlays}
+        presets={presets}
+        onPresetsChange={onPresetsChange}
+        onApply={(p) => {
+          // Re-id overlays on apply so they are independent from the preset definition.
+          const cloned = p.overlays.map((o) => ({ ...o, id: crypto.randomUUID() }));
+          onChange(cloned);
+          setActiveId(cloned[0]?.id ?? null);
+        }}
+      />
+      <div className="grid gap-4 md:grid-cols-[1fr_1.2fr]">
       {/* Left: list + add */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -132,6 +156,134 @@ export function OverlaysEditor({ channelId, overlays, onChange }: Props) {
           />
         )}
       </div>
+      </div>
+    </div>
+  );
+}
+
+function PresetsBar({
+  overlays,
+  presets,
+  onPresetsChange,
+  onApply,
+}: {
+  overlays: OverlayConfig[];
+  presets: OverlayPreset[];
+  onPresetsChange: (next: OverlayPreset[]) => void;
+  onApply: (p: OverlayPreset) => void;
+}) {
+  const [selected, setSelected] = useState<string>("");
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [name, setName] = useState("");
+
+  function save() {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      toast.error("Name required");
+      return;
+    }
+    if (presets.length >= MAX_OVERLAY_PRESETS && !presets.some((p) => p.name === trimmed)) {
+      toast.error(`Max ${MAX_OVERLAY_PRESETS} presets`);
+      return;
+    }
+    const existing = presets.find((p) => p.name === trimmed);
+    const snapshot: OverlayPreset = {
+      id: existing?.id ?? crypto.randomUUID(),
+      name: trimmed,
+      overlays: overlays.map((o) => ({ ...o })),
+    };
+    const next = existing
+      ? presets.map((p) => (p.id === existing.id ? snapshot : p))
+      : [...presets, snapshot];
+    onPresetsChange(next);
+    setSelected(snapshot.id);
+    setSaveOpen(false);
+    setName("");
+    toast.success(existing ? `Preset "${trimmed}" updated` : `Preset "${trimmed}" saved`);
+  }
+
+  function apply() {
+    const p = presets.find((x) => x.id === selected);
+    if (!p) return;
+    onApply(p);
+    toast.success(`Applied "${p.name}"`);
+  }
+  function remove() {
+    const p = presets.find((x) => x.id === selected);
+    if (!p) return;
+    onPresetsChange(presets.filter((x) => x.id !== p.id));
+    setSelected("");
+    toast.success(`Deleted "${p.name}"`);
+  }
+
+  return (
+    <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <Bookmark className="h-4 w-4 text-muted-foreground" />
+        <Label className="text-xs">Presets ({presets.length}/{MAX_OVERLAY_PRESETS})</Label>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={selected} onValueChange={setSelected}>
+          <SelectTrigger className="h-8 w-[220px]">
+            <SelectValue placeholder={presets.length ? "Choose a preset…" : "No presets yet"} />
+          </SelectTrigger>
+          <SelectContent>
+            {presets.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name} <span className="text-muted-foreground">· {p.overlays.length}</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button type="button" size="sm" variant="outline" onClick={apply} disabled={!selected}>
+          Apply
+        </Button>
+        <Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={remove} disabled={!selected}>
+          <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
+        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          {saveOpen ? (
+            <>
+              <Input
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") save();
+                  if (e.key === "Escape") { setSaveOpen(false); setName(""); }
+                }}
+                placeholder="Preset name"
+                className="h-8 w-[180px]"
+                maxLength={60}
+              />
+              <Button type="button" size="sm" onClick={save}>Save</Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => { setSaveOpen(false); setName(""); }}>
+                Cancel
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                if (overlays.length === 0) {
+                  toast.error("Add an overlay first");
+                  return;
+                }
+                const sel = presets.find((p) => p.id === selected);
+                setName(sel?.name ?? "");
+                setSaveOpen(true);
+              }}
+            >
+              <Plus className="mr-1 h-3.5 w-3.5" /> Save current as preset
+            </Button>
+          )}
+        </div>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Snapshot the current overlay set, then switch between configurations in one click. Presets save with channel settings.
+      </p>
     </div>
   );
 }
@@ -275,6 +427,25 @@ function OverlayDetailEditor({
             >
               <span className={cn("block h-2 w-2 rounded-full mx-auto", a === overlay.anchor ? "bg-primary-foreground" : "bg-muted-foreground")} />
             </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Corner quick-set */}
+      <div className="space-y-1.5">
+        <Label className="text-xs">Quick corner</Label>
+        <div className="flex flex-wrap gap-1.5">
+          {CORNER_PRESETS.map((c) => (
+            <Button
+              key={c.anchor}
+              type="button"
+              size="sm"
+              variant={overlay.anchor === c.anchor ? "default" : "outline"}
+              className="h-7"
+              onClick={() => onChange({ anchor: c.anchor, offsetXPct: 2, offsetYPct: 2 })}
+            >
+              {c.label}
+            </Button>
           ))}
         </div>
       </div>
