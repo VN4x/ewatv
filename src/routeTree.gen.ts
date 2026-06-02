@@ -13,6 +13,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PlayoutChannelSlugRouteImport } from './routes/playout.$channelSlug'
+import { Route as EmbedChannelSlugRouteImport } from './routes/embed.$channelSlug'
 import { Route as AuthenticatedSchedulesRouteImport } from './routes/_authenticated/schedules'
 import { Route as AuthenticatedPlayoutRouteImport } from './routes/_authenticated/playout'
 import { Route as AuthenticatedCollectionsRouteImport } from './routes/_authenticated/collections'
@@ -35,6 +36,11 @@ const IndexRoute = IndexRouteImport.update({
 const PlayoutChannelSlugRoute = PlayoutChannelSlugRouteImport.update({
   id: '/playout/$channelSlug',
   path: '/playout/$channelSlug',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EmbedChannelSlugRoute = EmbedChannelSlugRouteImport.update({
+  id: '/embed/$channelSlug',
+  path: '/embed/$channelSlug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedSchedulesRoute = AuthenticatedSchedulesRouteImport.update({
@@ -65,6 +71,7 @@ export interface FileRoutesByFullPath {
   '/collections': typeof AuthenticatedCollectionsRoute
   '/playout': typeof AuthenticatedPlayoutRoute
   '/schedules': typeof AuthenticatedSchedulesRoute
+  '/embed/$channelSlug': typeof EmbedChannelSlugRoute
   '/playout/$channelSlug': typeof PlayoutChannelSlugRoute
   '/api/cron/autopilot': typeof ApiCronAutopilotRoute
 }
@@ -74,6 +81,7 @@ export interface FileRoutesByTo {
   '/collections': typeof AuthenticatedCollectionsRoute
   '/playout': typeof AuthenticatedPlayoutRoute
   '/schedules': typeof AuthenticatedSchedulesRoute
+  '/embed/$channelSlug': typeof EmbedChannelSlugRoute
   '/playout/$channelSlug': typeof PlayoutChannelSlugRoute
   '/api/cron/autopilot': typeof ApiCronAutopilotRoute
 }
@@ -85,6 +93,7 @@ export interface FileRoutesById {
   '/_authenticated/collections': typeof AuthenticatedCollectionsRoute
   '/_authenticated/playout': typeof AuthenticatedPlayoutRoute
   '/_authenticated/schedules': typeof AuthenticatedSchedulesRoute
+  '/embed/$channelSlug': typeof EmbedChannelSlugRoute
   '/playout/$channelSlug': typeof PlayoutChannelSlugRoute
   '/api/cron/autopilot': typeof ApiCronAutopilotRoute
 }
@@ -96,6 +105,7 @@ export interface FileRouteTypes {
     | '/collections'
     | '/playout'
     | '/schedules'
+    | '/embed/$channelSlug'
     | '/playout/$channelSlug'
     | '/api/cron/autopilot'
   fileRoutesByTo: FileRoutesByTo
@@ -105,6 +115,7 @@ export interface FileRouteTypes {
     | '/collections'
     | '/playout'
     | '/schedules'
+    | '/embed/$channelSlug'
     | '/playout/$channelSlug'
     | '/api/cron/autopilot'
   id:
@@ -115,6 +126,7 @@ export interface FileRouteTypes {
     | '/_authenticated/collections'
     | '/_authenticated/playout'
     | '/_authenticated/schedules'
+    | '/embed/$channelSlug'
     | '/playout/$channelSlug'
     | '/api/cron/autopilot'
   fileRoutesById: FileRoutesById
@@ -123,6 +135,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   LoginRoute: typeof LoginRoute
+  EmbedChannelSlugRoute: typeof EmbedChannelSlugRoute
   PlayoutChannelSlugRoute: typeof PlayoutChannelSlugRoute
   ApiCronAutopilotRoute: typeof ApiCronAutopilotRoute
 }
@@ -155,6 +168,13 @@ declare module '@tanstack/react-router' {
       path: '/playout/$channelSlug'
       fullPath: '/playout/$channelSlug'
       preLoaderRoute: typeof PlayoutChannelSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/embed/$channelSlug': {
+      id: '/embed/$channelSlug'
+      path: '/embed/$channelSlug'
+      fullPath: '/embed/$channelSlug'
+      preLoaderRoute: typeof EmbedChannelSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/schedules': {
@@ -208,6 +228,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   LoginRoute: LoginRoute,
+  EmbedChannelSlugRoute: EmbedChannelSlugRoute,
   PlayoutChannelSlugRoute: PlayoutChannelSlugRoute,
   ApiCronAutopilotRoute: ApiCronAutopilotRoute,
 }
