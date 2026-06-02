@@ -6,6 +6,8 @@ export type ChannelPlayoutSettings = {
   autopilot_enabled: boolean;
   /** How many calendar days to maintain (default 7). */
   autopilot_week_days: number;
+  /** Hour-of-day (0–23) in autopilot timezone to run the daily Mist push. Default 4. */
+  autopilot_push_hour: number;
   /** Channel-wide transition gap between items, in milliseconds (0–60000). */
   transition_ms: number;
   last_mist_push_at: string | null;
@@ -15,11 +17,13 @@ export type ChannelPlayoutSettings = {
 };
 
 export const DEFAULT_CHANNEL_TRANSITION_MS = 7000;
+export const DEFAULT_AUTOPILOT_PUSH_HOUR = 4;
 
 const defaults: ChannelPlayoutSettings = {
   playout_active: false,
   autopilot_enabled: false,
   autopilot_week_days: 7,
+  autopilot_push_hour: DEFAULT_AUTOPILOT_PUSH_HOUR,
   transition_ms: DEFAULT_CHANNEL_TRANSITION_MS,
   last_mist_push_at: null,
   last_mist_push_error: null,
@@ -30,6 +34,11 @@ const defaults: ChannelPlayoutSettings = {
 function clampTransition(ms: unknown): number {
   if (typeof ms !== "number" || !Number.isFinite(ms)) return DEFAULT_CHANNEL_TRANSITION_MS;
   return Math.max(0, Math.min(60000, Math.floor(ms)));
+}
+
+function clampHour(h: unknown): number {
+  if (typeof h !== "number" || !Number.isFinite(h)) return DEFAULT_AUTOPILOT_PUSH_HOUR;
+  return Math.max(0, Math.min(23, Math.floor(h)));
 }
 
 export function parseChannelPlayoutSettings(settings: Json | null | undefined): ChannelPlayoutSettings {
