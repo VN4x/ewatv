@@ -235,6 +235,7 @@ function EditChannelView({
       }
       const newSettings = mergePlayoutIntoSettings(channel.settings, {
         transition_ms: Math.max(0, Math.min(60000, Math.round(gapSec * 1000))),
+        autopilot_push_hour: pushHour,
       });
       const { error } = await supabase
         .from("channels")
