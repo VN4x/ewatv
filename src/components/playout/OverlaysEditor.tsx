@@ -431,6 +431,25 @@ function OverlayDetailEditor({
         </div>
       </div>
 
+      {/* Corner quick-set */}
+      <div className="space-y-1.5">
+        <Label className="text-xs">Quick corner</Label>
+        <div className="flex flex-wrap gap-1.5">
+          {CORNER_PRESETS.map((c) => (
+            <Button
+              key={c.anchor}
+              type="button"
+              size="sm"
+              variant={overlay.anchor === c.anchor ? "default" : "outline"}
+              className="h-7"
+              onClick={() => onChange({ anchor: c.anchor, offsetXPct: 2, offsetYPct: 2 })}
+            >
+              {c.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
       {/* Offsets with arrows */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
