@@ -374,7 +374,13 @@ function EditChannelView({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <OverlaysEditor channelId={channel.id} overlays={overlays} onChange={setOverlays} />
+          <OverlaysEditor
+            channelId={channel.id}
+            overlays={overlays}
+            onChange={setOverlays}
+            presets={presets}
+            onPresetsChange={setPresets}
+          />
         </CardContent>
       </Card>
 
