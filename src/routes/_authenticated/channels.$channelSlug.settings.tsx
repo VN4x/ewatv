@@ -22,7 +22,9 @@ import {
   parseChannelPlayoutSettings,
   mergePlayoutIntoSettings,
   DEFAULT_CHANNEL_TRANSITION_MS,
+  DEFAULT_AUTOPILOT_PUSH_HOUR,
 } from "@/lib/channels/settings";
+import { runAutopilotNow } from "@/lib/api/autopilot.functions";
 import type { Json } from "@/integrations/supabase/types";
 
 export const Route = createFileRoute("/_authenticated/channels/$channelSlug/settings")({
