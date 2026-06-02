@@ -1,9 +1,9 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { z } from "zod";
-import { ArrowLeft, Copy, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, Copy, Trash2 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -23,9 +23,12 @@ import {
   mergePlayoutIntoSettings,
   DEFAULT_CHANNEL_TRANSITION_MS,
   DEFAULT_AUTOPILOT_PUSH_HOUR,
+  type OverlayConfig,
 } from "@/lib/channels/settings";
+import { OverlaysEditor } from "@/components/playout/OverlaysEditor";
 import { runAutopilotNow } from "@/lib/api/autopilot.functions";
 import type { Json } from "@/integrations/supabase/types";
+
 
 export const Route = createFileRoute("/_authenticated/channels/$channelSlug/settings")({
   head: ({ params }) => ({
@@ -195,32 +198,30 @@ function EditChannelView({
 
   const [name, setName] = useState(channel.name);
   const [slug, setSlug] = useState(channel.slug);
-  const [logoUrl, setLogoUrl] = useState(channel.overlay_logo_url ?? "");
+  const [overlays, setOverlays] = useState<OverlayConfig[]>(playout.overlays);
   const [fallback, setFallback] = useState(channel.fallback_youtube_url ?? "");
   const [gapSec, setGapSec] = useState<number>(Math.round(playout.transition_ms / 1000));
   const [pushHour, setPushHour] = useState<number>(playout.autopilot_push_hour);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setName(channel.name);
     setSlug(channel.slug);
-    setLogoUrl(channel.overlay_logo_url ?? "");
+    setOverlays(playout.overlays);
     setFallback(channel.fallback_youtube_url ?? "");
     setGapSec(Math.round(playout.transition_ms / 1000));
     setPushHour(playout.autopilot_push_hour);
-  }, [channel, playout.transition_ms, playout.autopilot_push_hour]);
+  }, [channel, playout.transition_ms, playout.autopilot_push_hour, playout.overlays]);
 
   const nameRes = nameSchema.safeParse(name);
   const slugRes = slugSchema.safeParse(slug);
   const fallbackRes = fallback ? urlSchema.safeParse(fallback) : { success: true as const };
-  const logoRes = logoUrl ? urlSchema.safeParse(logoUrl) : { success: true as const };
   const gapValid = Number.isFinite(gapSec) && gapSec >= 0 && gapSec <= 60;
   const hourValid = Number.isInteger(pushHour) && pushHour >= 0 && pushHour <= 23;
 
   const canSave =
-    nameRes.success && slugRes.success && fallbackRes.success && logoRes.success && gapValid && hourValid;
+    nameRes.success && slugRes.success && fallbackRes.success && gapValid && hourValid;
+
 
   const saveMut = useMutation({
     mutationFn: async () => {
