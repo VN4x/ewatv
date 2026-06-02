@@ -29,7 +29,6 @@ function EmbedPage() {
         hlsUrl={now?.hlsUrl ?? null}
         fallbackYoutubeUrl={now?.fallbackYoutubeUrl ?? null}
         className="absolute inset-0 h-full w-full"
-        autoPlay
         muted
         onError={() => undefined}
       />
