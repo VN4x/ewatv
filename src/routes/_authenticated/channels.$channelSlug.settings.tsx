@@ -237,13 +237,17 @@ function EditChannelView({
       const newSettings = mergePlayoutIntoSettings(channel.settings, {
         transition_ms: Math.max(0, Math.min(60000, Math.round(gapSec * 1000))),
         autopilot_push_hour: pushHour,
+        overlays,
       });
+      // Keep legacy single-logo column in sync with the first enabled overlay so older
+      // consumers and queries that read overlay_logo_url still get something useful.
+      const firstOverlay = overlays.find((o) => o.enabled && o.url) ?? overlays[0] ?? null;
       const { error } = await supabase
         .from("channels")
         .update({
           name,
           slug,
-          overlay_logo_url: logoUrl || null,
+          overlay_logo_url: firstOverlay?.url || null,
           fallback_youtube_url: fallback || null,
           settings: newSettings,
         })
@@ -297,28 +301,8 @@ function EditChannelView({
     onError: (e: any) => toast.error(e.message ?? "Update failed"),
   });
 
-  async function uploadLogo(file: File) {
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Max 5 MB");
-      return;
-    }
-    setUploading(true);
-    try {
-      const ext = file.name.split(".").pop()?.toLowerCase() || "png";
-      const path = `${channel.id}/${Date.now()}.${ext}`;
-      const { error } = await supabase.storage
-        .from("channel-logos")
-        .upload(path, file, { contentType: file.type, cacheControl: "3600", upsert: false });
-      if (error) throw error;
-      const { data } = supabase.storage.from("channel-logos").getPublicUrl(path);
-      setLogoUrl(data.publicUrl);
-      toast.success("Logo uploaded — click Save to apply");
-    } catch (e: any) {
-      toast.error(e.message ?? "Upload failed");
-    } finally {
-      setUploading(false);
-    }
-  }
+  // Overlay upload handled inside OverlaysEditor.
+
 
   // Embed snippet — responsive 16:9, no chrome
   const origin = typeof window !== "undefined" ? window.location.origin : "";
@@ -378,42 +362,18 @@ function EditChannelView({
 
       <Card>
         <CardHeader>
-          <CardTitle>Overlay logo</CardTitle>
+          <CardTitle>Overlays</CardTitle>
           <CardDescription>
-            Shown over the player at all times. Per-video <em>hide overlay</em> still hides it on
-            videos that already have a logo burnt in.
+            Logos, watermarks, badges — anything shown on top of the player. Position each one
+            anywhere on screen, set size and opacity, and add multiple if you like. Per-video
+            <em> hide overlay</em> still hides them all when a video already has a logo burnt in.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-4">
-            <div className="flex h-20 w-20 items-center justify-center rounded-md bg-black/80 ring-1 ring-border">
-              {logoUrl ? (
-                <img src={logoUrl} alt="Logo" className="max-h-full max-w-full" />
-              ) : (
-                <span className="text-xs text-muted-foreground">No logo</span>
-              )}
-            </div>
-            <div className="flex-1 space-y-2">
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void uploadLogo(f);
-                  e.target.value = "";
-                }}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-              >
-                <Upload className="mr-2 h-4 w-4" />
-                {uploading ? "Uploading…" : "Upload PNG / JPG / SVG"}
+        <CardContent>
+          <OverlaysEditor channelId={channel.id} overlays={overlays} onChange={setOverlays} />
+        </CardContent>
+      </Card>
+
               </Button>
               <Input
                 value={logoUrl}
