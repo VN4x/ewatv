@@ -374,19 +374,7 @@ function EditChannelView({
         </CardContent>
       </Card>
 
-              </Button>
-              <Input
-                value={logoUrl}
-                onChange={(e) => setLogoUrl(e.target.value)}
-                placeholder="https://…/logo.png"
-              />
-              {!logoRes.success && logoUrl && (
-                <p className="text-xs text-destructive">Enter a valid URL</p>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+
 
       <Card>
         <CardHeader>
