@@ -42,7 +42,7 @@ const CORNER_PRESETS: { anchor: OverlayAnchor; label: string }[] = [
   { anchor: "br", label: "Lower-right" },
 ];
 
-export function OverlaysEditor({ channelId, overlays, onChange }: Props) {
+export function OverlaysEditor({ channelId, overlays, onChange, presets, onPresetsChange }: Props) {
   const [activeId, setActiveId] = useState<string | null>(overlays[0]?.id ?? null);
 
   useEffect(() => {
