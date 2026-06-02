@@ -177,6 +177,10 @@ export function mergePlayoutIntoSettings(
     .map((o) => parseOverlay(o))
     .filter((o): o is OverlayConfig => o !== null)
     .slice(0, MAX_OVERLAYS);
+  const overlay_presets = (patch.overlay_presets ?? current.overlay_presets)
+    .map((p) => parsePreset(p))
+    .filter((p): p is OverlayPreset => p !== null)
+    .slice(0, MAX_OVERLAY_PRESETS);
   const merged: Record<string, unknown> = {
     ...base,
     playout_active: patch.playout_active ?? current.playout_active,
@@ -187,6 +191,7 @@ export function mergePlayoutIntoSettings(
     transition_ms:
       patch.transition_ms !== undefined ? clampTransition(patch.transition_ms) : current.transition_ms,
     overlays: overlays as unknown as Json,
+    overlay_presets: overlay_presets as unknown as Json,
     last_mist_push_at:
       patch.last_mist_push_at !== undefined ? patch.last_mist_push_at : current.last_mist_push_at,
     last_mist_push_error:
