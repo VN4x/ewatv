@@ -56,13 +56,13 @@ export function parseChannelPlayoutSettings(settings: Json | null | undefined): 
 export function mergePlayoutIntoSettings(
   settings: Json | null | undefined,
   patch: Partial<ChannelPlayoutSettings>,
-): Record<string, unknown> {
+): Json {
   const base =
     settings && typeof settings === "object" && !Array.isArray(settings)
       ? { ...(settings as Record<string, unknown>) }
       : {};
   const current = parseChannelPlayoutSettings(settings);
-  return {
+  const merged: Record<string, unknown> = {
     ...base,
     playout_active: patch.playout_active ?? current.playout_active,
     autopilot_enabled: patch.autopilot_enabled ?? current.autopilot_enabled,
@@ -84,6 +84,7 @@ export function mergePlayoutIntoSettings(
         ? patch.autopilot_last_run_at
         : current.autopilot_last_run_at,
   };
+  return merged as Json;
 }
 
 /** Calendar date (yyyy-MM-dd) that should trigger a live Mist push when playout is active. */
