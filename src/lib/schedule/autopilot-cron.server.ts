@@ -154,6 +154,7 @@ export async function runAutopilotJobs(
   const tz = getAutopilotTimezone();
   const today = getTodayInAutopilotTz();
   const weekDates = getWeeklyScheduleDates();
+  const currentHour = hourInTz(new Date(), tz);
 
   const result: AutopilotJobResult = {
     timezone: tz,
@@ -173,6 +174,13 @@ export async function runAutopilotJobs(
   for (const ch of channels ?? []) {
     const settings = parseChannelPlayoutSettings(ch.settings);
     if (!settings.autopilot_enabled) continue;
+    if (settings.autopilot_push_hour !== currentHour) {
+      result.skipped.push({
+        channelId: ch.id,
+        reason: `Push hour ${settings.autopilot_push_hour} != current hour ${currentHour} (${tz})`,
+      });
+      continue;
+    }
 
     const weekResult = await generateWeeklySchedulesForChannel(
       supabase,
