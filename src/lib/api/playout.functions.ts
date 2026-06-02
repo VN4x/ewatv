@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { getMistConfig } from "@/lib/mist/config.server";
+import { resolveOverlays, type OverlayConfig } from "@/lib/channels/settings";
 
 /** Today's calendar date in Europe/Helsinki as YYYY-MM-DD */
 function getTodayInHelsinki(at: Date = new Date()): string {
@@ -29,6 +30,7 @@ export type NowPlayingResult = {
   channelName: string;
   channelSlug: string;
   overlayLogoUrl: string | null;
+  overlays: OverlayConfig[];
   current: {
     title: string;
     description: string | null;
@@ -46,6 +48,7 @@ export type NowPlayingResult = {
   } | null;
 };
 
+
 const inputSchema = z.object({
   channelSlug: z.string().min(1).max(80).regex(/^[a-zA-Z0-9._-]+$/).optional(),
   channelId: z.string().uuid().optional(),
@@ -61,7 +64,7 @@ export const nowPlaying = createServerFn({ method: "GET" })
 
     const channelQuery = supabaseAdmin
       .from("channels")
-      .select("id, name, slug, mist_stream_name, overlay_logo_url, fallback_youtube_url")
+      .select("id, name, slug, mist_stream_name, overlay_logo_url, fallback_youtube_url, settings")
       .limit(1);
 
     const { data: channel, error: chErr } = data.channelId
@@ -90,6 +93,7 @@ export const nowPlaying = createServerFn({ method: "GET" })
       channelName: channel.name,
       channelSlug: channel.slug,
       overlayLogoUrl: channel.overlay_logo_url,
+      overlays: resolveOverlays(channel.settings, channel.overlay_logo_url),
     };
 
     if (!schedule) return { ...base, current: null, next: null };

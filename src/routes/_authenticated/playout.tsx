@@ -187,6 +187,7 @@ function PlayoutPage() {
         <PlayoutOverlay
           videoEl={playerRef.current?.video ?? null}
           now={now}
+          overlays={now?.overlays}
           logoUrl={now?.overlayLogoUrl ?? selectedChannel?.overlay_logo_url ?? "/overlay-logo.png"}
         />
         {!mistConfig?.publicHlsBase && (

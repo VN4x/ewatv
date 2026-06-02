@@ -1,9 +1,9 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { z } from "zod";
-import { ArrowLeft, Copy, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, Copy, Trash2 } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -23,9 +23,12 @@ import {
   mergePlayoutIntoSettings,
   DEFAULT_CHANNEL_TRANSITION_MS,
   DEFAULT_AUTOPILOT_PUSH_HOUR,
+  type OverlayConfig,
 } from "@/lib/channels/settings";
+import { OverlaysEditor } from "@/components/playout/OverlaysEditor";
 import { runAutopilotNow } from "@/lib/api/autopilot.functions";
 import type { Json } from "@/integrations/supabase/types";
+
 
 export const Route = createFileRoute("/_authenticated/channels/$channelSlug/settings")({
   head: ({ params }) => ({
@@ -195,32 +198,30 @@ function EditChannelView({
 
   const [name, setName] = useState(channel.name);
   const [slug, setSlug] = useState(channel.slug);
-  const [logoUrl, setLogoUrl] = useState(channel.overlay_logo_url ?? "");
+  const [overlays, setOverlays] = useState<OverlayConfig[]>(playout.overlays);
   const [fallback, setFallback] = useState(channel.fallback_youtube_url ?? "");
   const [gapSec, setGapSec] = useState<number>(Math.round(playout.transition_ms / 1000));
   const [pushHour, setPushHour] = useState<number>(playout.autopilot_push_hour);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setName(channel.name);
     setSlug(channel.slug);
-    setLogoUrl(channel.overlay_logo_url ?? "");
+    setOverlays(playout.overlays);
     setFallback(channel.fallback_youtube_url ?? "");
     setGapSec(Math.round(playout.transition_ms / 1000));
     setPushHour(playout.autopilot_push_hour);
-  }, [channel, playout.transition_ms, playout.autopilot_push_hour]);
+  }, [channel, playout.transition_ms, playout.autopilot_push_hour, playout.overlays]);
 
   const nameRes = nameSchema.safeParse(name);
   const slugRes = slugSchema.safeParse(slug);
   const fallbackRes = fallback ? urlSchema.safeParse(fallback) : { success: true as const };
-  const logoRes = logoUrl ? urlSchema.safeParse(logoUrl) : { success: true as const };
   const gapValid = Number.isFinite(gapSec) && gapSec >= 0 && gapSec <= 60;
   const hourValid = Number.isInteger(pushHour) && pushHour >= 0 && pushHour <= 23;
 
   const canSave =
-    nameRes.success && slugRes.success && fallbackRes.success && logoRes.success && gapValid && hourValid;
+    nameRes.success && slugRes.success && fallbackRes.success && gapValid && hourValid;
+
 
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -236,13 +237,17 @@ function EditChannelView({
       const newSettings = mergePlayoutIntoSettings(channel.settings, {
         transition_ms: Math.max(0, Math.min(60000, Math.round(gapSec * 1000))),
         autopilot_push_hour: pushHour,
+        overlays,
       });
+      // Keep legacy single-logo column in sync with the first enabled overlay so older
+      // consumers and queries that read overlay_logo_url still get something useful.
+      const firstOverlay = overlays.find((o) => o.enabled && o.url) ?? overlays[0] ?? null;
       const { error } = await supabase
         .from("channels")
         .update({
           name,
           slug,
-          overlay_logo_url: logoUrl || null,
+          overlay_logo_url: firstOverlay?.url || null,
           fallback_youtube_url: fallback || null,
           settings: newSettings,
         })
@@ -296,28 +301,8 @@ function EditChannelView({
     onError: (e: any) => toast.error(e.message ?? "Update failed"),
   });
 
-  async function uploadLogo(file: File) {
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Max 5 MB");
-      return;
-    }
-    setUploading(true);
-    try {
-      const ext = file.name.split(".").pop()?.toLowerCase() || "png";
-      const path = `${channel.id}/${Date.now()}.${ext}`;
-      const { error } = await supabase.storage
-        .from("channel-logos")
-        .upload(path, file, { contentType: file.type, cacheControl: "3600", upsert: false });
-      if (error) throw error;
-      const { data } = supabase.storage.from("channel-logos").getPublicUrl(path);
-      setLogoUrl(data.publicUrl);
-      toast.success("Logo uploaded — click Save to apply");
-    } catch (e: any) {
-      toast.error(e.message ?? "Upload failed");
-    } finally {
-      setUploading(false);
-    }
-  }
+  // Overlay upload handled inside OverlaysEditor.
+
 
   // Embed snippet — responsive 16:9, no chrome
   const origin = typeof window !== "undefined" ? window.location.origin : "";
@@ -377,55 +362,19 @@ function EditChannelView({
 
       <Card>
         <CardHeader>
-          <CardTitle>Overlay logo</CardTitle>
+          <CardTitle>Overlays</CardTitle>
           <CardDescription>
-            Shown over the player at all times. Per-video <em>hide overlay</em> still hides it on
-            videos that already have a logo burnt in.
+            Logos, watermarks, badges — anything shown on top of the player. Position each one
+            anywhere on screen, set size and opacity, and add multiple if you like. Per-video
+            <em> hide overlay</em> still hides them all when a video already has a logo burnt in.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-4">
-            <div className="flex h-20 w-20 items-center justify-center rounded-md bg-black/80 ring-1 ring-border">
-              {logoUrl ? (
-                <img src={logoUrl} alt="Logo" className="max-h-full max-w-full" />
-              ) : (
-                <span className="text-xs text-muted-foreground">No logo</span>
-              )}
-            </div>
-            <div className="flex-1 space-y-2">
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void uploadLogo(f);
-                  e.target.value = "";
-                }}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-              >
-                <Upload className="mr-2 h-4 w-4" />
-                {uploading ? "Uploading…" : "Upload PNG / JPG / SVG"}
-              </Button>
-              <Input
-                value={logoUrl}
-                onChange={(e) => setLogoUrl(e.target.value)}
-                placeholder="https://…/logo.png"
-              />
-              {!logoRes.success && logoUrl && (
-                <p className="text-xs text-destructive">Enter a valid URL</p>
-              )}
-            </div>
-          </div>
+        <CardContent>
+          <OverlaysEditor channelId={channel.id} overlays={overlays} onChange={setOverlays} />
         </CardContent>
       </Card>
+
+
 
       <Card>
         <CardHeader>

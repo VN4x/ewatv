@@ -1,12 +1,17 @@
 import { Maximize2, Pause, Play, Volume2, VolumeX } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { NowPlayingResult } from "@/lib/api/playout.functions";
+import type { OverlayConfig } from "@/lib/channels/settings";
+import { defaultOverlay } from "@/lib/channels/settings";
 
 type Props = {
   videoEl: HTMLVideoElement | null;
   now: NowPlayingResult | undefined;
+  /** Preferred: array of configured overlays. */
+  overlays?: OverlayConfig[];
+  /** Legacy single-logo fallback when overlays not provided/empty. */
   logoUrl?: string | null;
   className?: string;
 };
@@ -22,7 +27,36 @@ function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-export function PlayoutOverlay({ videoEl, now, logoUrl, className }: Props) {
+/** Compute absolute-position CSS for an overlay relative to the player surface. */
+export function overlayPositionStyle(o: OverlayConfig): React.CSSProperties {
+  const v = o.anchor[0]; // t/m/b
+  const h = o.anchor[1]; // l/c/r
+  const style: React.CSSProperties = {
+    position: "absolute",
+    width: `${o.widthPct}%`,
+    height: "auto",
+    opacity: o.opacity,
+    pointerEvents: "none",
+    userSelect: "none",
+  };
+  // Horizontal
+  if (h === "l") style.left = `${o.offsetXPct}%`;
+  else if (h === "r") style.right = `${-o.offsetXPct}%`;
+  else {
+    style.left = `${50 + o.offsetXPct}%`;
+    style.transform = (style.transform ?? "") + " translateX(-50%)";
+  }
+  // Vertical
+  if (v === "t") style.top = `${o.offsetYPct}%`;
+  else if (v === "b") style.bottom = `${-o.offsetYPct}%`;
+  else {
+    style.top = `${50 + o.offsetYPct}%`;
+    style.transform = (style.transform ?? "") + " translateY(-50%)";
+  }
+  return style;
+}
+
+export function PlayoutOverlay({ videoEl, now, overlays, logoUrl, className }: Props) {
   const [visible, setVisible] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(true);
@@ -72,9 +106,15 @@ export function PlayoutOverlay({ videoEl, now, logoUrl, className }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [videoEl]);
 
-  // Logo always on, unless current video has hide_overlay set (burnt-in logo).
   const isGap = !!now?.current?.isGap;
-  const showLogo = !!logoUrl && (isGap || !now?.current?.hideOverlay);
+  const hideOverlays = !isGap && !!now?.current?.hideOverlay;
+
+  const resolved: OverlayConfig[] = useMemo(() => {
+    if (overlays && overlays.length > 0) return overlays.filter((o) => o.enabled && o.url);
+    if (logoUrl) return [defaultOverlay({ url: logoUrl })];
+    return [];
+  }, [overlays, logoUrl]);
+
   const remainingMs = now?.current ? Math.max(0, now.current.durationMs - elapsedMs) : 0;
   const next = now?.next;
   const nextEnd = next ? new Date(new Date(next.startsAt).getTime() + next.durationMs).toISOString() : null;
@@ -86,13 +126,15 @@ export function PlayoutOverlay({ videoEl, now, logoUrl, className }: Props) {
       onMouseLeave={() => setVisible(false)}
       onClick={() => setVisible((v) => !v)}
     >
-      {showLogo && (
+      {!hideOverlays && resolved.map((o) => (
         <img
-          src={logoUrl!}
+          key={o.id}
+          src={o.url}
           alt=""
-          className="pointer-events-none absolute left-3 top-3 z-20 w-[8%] min-w-[48px] opacity-90"
+          style={overlayPositionStyle(o)}
+          className="z-20"
         />
-      )}
+      ))}
 
       {/* NEXT card during transitions */}
       {isGap && next && (
