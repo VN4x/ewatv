@@ -22,7 +22,9 @@ import {
   parseChannelPlayoutSettings,
   mergePlayoutIntoSettings,
   DEFAULT_CHANNEL_TRANSITION_MS,
+  DEFAULT_AUTOPILOT_PUSH_HOUR,
 } from "@/lib/channels/settings";
+import { runAutopilotNow } from "@/lib/api/autopilot.functions";
 import type { Json } from "@/integrations/supabase/types";
 
 export const Route = createFileRoute("/_authenticated/channels/$channelSlug/settings")({
@@ -196,6 +198,7 @@ function EditChannelView({
   const [logoUrl, setLogoUrl] = useState(channel.overlay_logo_url ?? "");
   const [fallback, setFallback] = useState(channel.fallback_youtube_url ?? "");
   const [gapSec, setGapSec] = useState<number>(Math.round(playout.transition_ms / 1000));
+  const [pushHour, setPushHour] = useState<number>(playout.autopilot_push_hour);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -206,16 +209,18 @@ function EditChannelView({
     setLogoUrl(channel.overlay_logo_url ?? "");
     setFallback(channel.fallback_youtube_url ?? "");
     setGapSec(Math.round(playout.transition_ms / 1000));
-  }, [channel, playout.transition_ms]);
+    setPushHour(playout.autopilot_push_hour);
+  }, [channel, playout.transition_ms, playout.autopilot_push_hour]);
 
   const nameRes = nameSchema.safeParse(name);
   const slugRes = slugSchema.safeParse(slug);
   const fallbackRes = fallback ? urlSchema.safeParse(fallback) : { success: true as const };
   const logoRes = logoUrl ? urlSchema.safeParse(logoUrl) : { success: true as const };
   const gapValid = Number.isFinite(gapSec) && gapSec >= 0 && gapSec <= 60;
+  const hourValid = Number.isInteger(pushHour) && pushHour >= 0 && pushHour <= 23;
 
   const canSave =
-    nameRes.success && slugRes.success && fallbackRes.success && logoRes.success && gapValid;
+    nameRes.success && slugRes.success && fallbackRes.success && logoRes.success && gapValid && hourValid;
 
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -230,6 +235,7 @@ function EditChannelView({
       }
       const newSettings = mergePlayoutIntoSettings(channel.settings, {
         transition_ms: Math.max(0, Math.min(60000, Math.round(gapSec * 1000))),
+        autopilot_push_hour: pushHour,
       });
       const { error } = await supabase
         .from("channels")
@@ -278,6 +284,16 @@ function EditChannelView({
       onDeleted();
     },
     onError: (e: any) => toast.error(e.message ?? "Delete failed"),
+  });
+
+  const updateNowMut = useMutation({
+    mutationFn: async () => runAutopilotNow({ data: { channelId: channel.id } }),
+    onSuccess: (res: any) => {
+      const generated = res?.generated?.length ?? 0;
+      toast.success(generated > 0 ? `Refreshed ${generated} day(s) and pushed today` : "Pushed today's playlist");
+      qc.invalidateQueries({ queryKey: ["channel-by-slug"] });
+    },
+    onError: (e: any) => toast.error(e.message ?? "Update failed"),
   });
 
   async function uploadLogo(file: File) {
@@ -454,6 +470,42 @@ function EditChannelView({
           </p>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Daily playlist update</CardTitle>
+          <CardDescription>
+            Hour-of-day (autopilot timezone) when the next day's playlist is pushed to the live
+            stream. Applies until you change it. Use <em>Update now</em> after manual edits.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-1.5">
+            <Label>Update hour (0–23)</Label>
+            <Input
+              type="number"
+              min={0}
+              max={23}
+              value={pushHour}
+              onChange={(e) => setPushHour(Math.max(0, Math.min(23, Math.floor(Number(e.target.value) || 0))))}
+              className="w-32"
+            />
+            <p className="text-xs text-muted-foreground">
+              Default {DEFAULT_AUTOPILOT_PUSH_HOUR}:00. The cron job runs hourly and pushes at this hour only.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => updateNowMut.mutate()}
+            disabled={updateNowMut.isPending}
+          >
+            {updateNowMut.isPending ? "Updating…" : "Update now"}
+          </Button>
+        </CardContent>
+      </Card>
+
+
 
       <Card>
         <CardHeader>

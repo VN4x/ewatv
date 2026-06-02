@@ -1,25 +1,31 @@
 # ewatv autopilot cron
 
-## Schedule: **04:00** (air timezone)
+## Schedule: **hourly** (push hour configurable per channel in Settings)
 
-Early viewers start before 05:00. Run the autopilot job at **04:00 or earlier** in `AUTOPILOT_TIMEZONE` (default `Europe/Helsinki`).
+Each channel has a configurable **Update hour** (0–23, default 4) in its
+Settings page. The cron script runs every hour; the handler skips channels
+whose configured hour doesn't match the current hour in `AUTOPILOT_TIMEZONE`
+(default `Europe/Helsinki`).
 
 ### VPS crontab (recommended)
 
 ```cron
-# Run at 04:00 Helsinki — generates rolling week + pushes TODAY to Mist
+# Run every hour — handler picks the right channels for the current hour
 CRON_TZ=Europe/Helsinki
-0 4 * * * /path/to/ewatv/deploy/cron/autopilot.sh >> /var/log/ewatv-autopilot.log 2>&1
+0 * * * * /path/to/ewatv/deploy/cron/autopilot.sh >> /var/log/ewatv-autopilot.log 2>&1
 ```
 
-Host not in Helsinki? Set `CRON_TZ=Europe/Helsinki` so `0 4` means 04:00 **Helsinki**, not host local time.
+Host not in Helsinki? Set `CRON_TZ=Europe/Helsinki` so the timezone matches.
 
-### What runs at 04:00
+### What runs each hour
 
-1. Fill **empty** days in the 7-day horizon (channel `autopilot_enabled`).
-2. **Push today’s** schedule to Mist for channels with **`playout_active`** (updates the live HLS stream before morning audience).
+For every channel where the configured **Update hour** equals the current hour:
 
-Manual **Save** on Schedules still pushes today immediately when Playout active (not limited to 04:00).
+1. Fill **empty** days in the rolling horizon (channel `autopilot_enabled`).
+2. **Push today's** schedule to Mist when `playout_active`.
+
+Manual **Update now** in channel Settings or **Save** on Schedules still
+pushes immediately, regardless of the hour.
 
 ### Env for `autopilot.sh`
 
@@ -28,4 +34,5 @@ export EWATV_APP_URL=https://your-app.lovable.app
 export AUTOPILOT_CRON_SECRET=your-secret
 ```
 
-Lovable secrets must include the same `AUTOPILOT_CRON_SECRET` and `SUPABASE_SERVICE_ROLE_KEY` (used by `/api/cron/autopilot`).
+Lovable secrets must include the same `AUTOPILOT_CRON_SECRET` and
+`SUPABASE_SERVICE_ROLE_KEY` (used by `/api/cron/autopilot`).

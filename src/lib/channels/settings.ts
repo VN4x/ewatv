@@ -6,6 +6,8 @@ export type ChannelPlayoutSettings = {
   autopilot_enabled: boolean;
   /** How many calendar days to maintain (default 7). */
   autopilot_week_days: number;
+  /** Hour-of-day (0–23) in autopilot timezone to run the daily Mist push. Default 4. */
+  autopilot_push_hour: number;
   /** Channel-wide transition gap between items, in milliseconds (0–60000). */
   transition_ms: number;
   last_mist_push_at: string | null;
@@ -15,11 +17,13 @@ export type ChannelPlayoutSettings = {
 };
 
 export const DEFAULT_CHANNEL_TRANSITION_MS = 7000;
+export const DEFAULT_AUTOPILOT_PUSH_HOUR = 4;
 
 const defaults: ChannelPlayoutSettings = {
   playout_active: false,
   autopilot_enabled: false,
   autopilot_week_days: 7,
+  autopilot_push_hour: DEFAULT_AUTOPILOT_PUSH_HOUR,
   transition_ms: DEFAULT_CHANNEL_TRANSITION_MS,
   last_mist_push_at: null,
   last_mist_push_error: null,
@@ -32,6 +36,11 @@ function clampTransition(ms: unknown): number {
   return Math.max(0, Math.min(60000, Math.floor(ms)));
 }
 
+function clampHour(h: unknown): number {
+  if (typeof h !== "number" || !Number.isFinite(h)) return DEFAULT_AUTOPILOT_PUSH_HOUR;
+  return Math.max(0, Math.min(23, Math.floor(h)));
+}
+
 export function parseChannelPlayoutSettings(settings: Json | null | undefined): ChannelPlayoutSettings {
   if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
     return { ...defaults };
@@ -42,6 +51,7 @@ export function parseChannelPlayoutSettings(settings: Json | null | undefined): 
     playout_active: s.playout_active === true,
     autopilot_enabled: s.autopilot_enabled === true,
     autopilot_week_days: weekDays >= 1 && weekDays <= 14 ? Math.floor(weekDays) : 7,
+    autopilot_push_hour: clampHour(s.autopilot_push_hour),
     transition_ms: clampTransition(s.transition_ms),
     last_mist_push_at: typeof s.last_mist_push_at === "string" ? s.last_mist_push_at : null,
     last_mist_push_error:
@@ -67,6 +77,8 @@ export function mergePlayoutIntoSettings(
     playout_active: patch.playout_active ?? current.playout_active,
     autopilot_enabled: patch.autopilot_enabled ?? current.autopilot_enabled,
     autopilot_week_days: patch.autopilot_week_days ?? current.autopilot_week_days,
+    autopilot_push_hour:
+      patch.autopilot_push_hour !== undefined ? clampHour(patch.autopilot_push_hour) : current.autopilot_push_hour,
     transition_ms:
       patch.transition_ms !== undefined ? clampTransition(patch.transition_ms) : current.transition_ms,
     last_mist_push_at:
