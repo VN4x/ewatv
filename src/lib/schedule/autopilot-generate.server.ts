@@ -34,7 +34,6 @@ const CATEGORY_MEMORY = 3;
 
 function videoMatchesSlot(video: VideoRow, slot: SlotDaypart): boolean {
   if (video.daypart === "any") return true;
-  if (slot === "day") return video.daypart === "any";
   return video.daypart === slot;
 }
 

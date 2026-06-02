@@ -26,7 +26,8 @@ export type PersistScheduleResult = {
   pushed: boolean;
   pushSkippedReason?: string;
   pushError?: string;
-  pushResult?: unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  pushResult?: any;
 };
 
 export async function persistScheduleAndPush(
@@ -73,7 +74,7 @@ export async function persistScheduleAndPush(
       start_at: it.start_at,
       duration_ms: it.duration_ms,
       transition_ms: it.transition_ms,
-      source_snapshot: it.source_snapshot,
+      source_snapshot: it.source_snapshot as Database["public"]["Tables"]["schedule_items"]["Insert"]["source_snapshot"],
     }));
     const { error: insErr } = await supabase.from("schedule_items").insert(rows);
     if (insErr) throw insErr;

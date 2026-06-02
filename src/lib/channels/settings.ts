@@ -6,21 +6,31 @@ export type ChannelPlayoutSettings = {
   autopilot_enabled: boolean;
   /** How many calendar days to maintain (default 7). */
   autopilot_week_days: number;
+  /** Channel-wide transition gap between items, in milliseconds (0–60000). */
+  transition_ms: number;
   last_mist_push_at: string | null;
   last_mist_push_error: string | null;
   last_mist_push_schedule_id: string | null;
   autopilot_last_run_at: string | null;
 };
 
+export const DEFAULT_CHANNEL_TRANSITION_MS = 7000;
+
 const defaults: ChannelPlayoutSettings = {
   playout_active: false,
   autopilot_enabled: false,
   autopilot_week_days: 7,
+  transition_ms: DEFAULT_CHANNEL_TRANSITION_MS,
   last_mist_push_at: null,
   last_mist_push_error: null,
   last_mist_push_schedule_id: null,
   autopilot_last_run_at: null,
 };
+
+function clampTransition(ms: unknown): number {
+  if (typeof ms !== "number" || !Number.isFinite(ms)) return DEFAULT_CHANNEL_TRANSITION_MS;
+  return Math.max(0, Math.min(60000, Math.floor(ms)));
+}
 
 export function parseChannelPlayoutSettings(settings: Json | null | undefined): ChannelPlayoutSettings {
   if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
@@ -32,13 +42,10 @@ export function parseChannelPlayoutSettings(settings: Json | null | undefined): 
     playout_active: s.playout_active === true,
     autopilot_enabled: s.autopilot_enabled === true,
     autopilot_week_days: weekDays >= 1 && weekDays <= 14 ? Math.floor(weekDays) : 7,
+    transition_ms: clampTransition(s.transition_ms),
     last_mist_push_at: typeof s.last_mist_push_at === "string" ? s.last_mist_push_at : null,
     last_mist_push_error:
-      typeof s.last_mist_push_error === "string"
-        ? s.last_mist_push_error
-        : s.last_mist_push_error === null
-          ? null
-          : null,
+      typeof s.last_mist_push_error === "string" ? s.last_mist_push_error : null,
     last_mist_push_schedule_id:
       typeof s.last_mist_push_schedule_id === "string" ? s.last_mist_push_schedule_id : null,
     autopilot_last_run_at:
@@ -49,17 +56,19 @@ export function parseChannelPlayoutSettings(settings: Json | null | undefined): 
 export function mergePlayoutIntoSettings(
   settings: Json | null | undefined,
   patch: Partial<ChannelPlayoutSettings>,
-): Record<string, unknown> {
+): Json {
   const base =
     settings && typeof settings === "object" && !Array.isArray(settings)
       ? { ...(settings as Record<string, unknown>) }
       : {};
   const current = parseChannelPlayoutSettings(settings);
-  return {
+  const merged: Record<string, unknown> = {
     ...base,
     playout_active: patch.playout_active ?? current.playout_active,
     autopilot_enabled: patch.autopilot_enabled ?? current.autopilot_enabled,
     autopilot_week_days: patch.autopilot_week_days ?? current.autopilot_week_days,
+    transition_ms:
+      patch.transition_ms !== undefined ? clampTransition(patch.transition_ms) : current.transition_ms,
     last_mist_push_at:
       patch.last_mist_push_at !== undefined ? patch.last_mist_push_at : current.last_mist_push_at,
     last_mist_push_error:
@@ -75,6 +84,7 @@ export function mergePlayoutIntoSettings(
         ? patch.autopilot_last_run_at
         : current.autopilot_last_run_at,
   };
+  return merged as Json;
 }
 
 /** Calendar date (yyyy-MM-dd) that should trigger a live Mist push when playout is active. */

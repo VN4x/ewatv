@@ -28,8 +28,10 @@ export type PushScheduleResult = {
   hlsUrl: string | null;
   itemCount: number;
   plsPreview?: string;
-  syncResult?: unknown;
-  mistResponse?: unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  syncResult?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mistResponse?: any;
 };
 
 type AuthSupabase = SupabaseClient<Database>;

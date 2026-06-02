@@ -1,0 +1,1 @@
+DROP POLICY IF EXISTS "channel-logos public read" ON storage.objects;
