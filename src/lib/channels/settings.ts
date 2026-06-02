@@ -124,6 +124,11 @@ export function parseChannelPlayoutSettings(settings: Json | null | undefined): 
     .map(parseOverlay)
     .filter((o): o is OverlayConfig => o !== null)
     .slice(0, MAX_OVERLAYS);
+  const presetsRaw = Array.isArray(s.overlay_presets) ? s.overlay_presets : [];
+  const overlay_presets = presetsRaw
+    .map(parsePreset)
+    .filter((p): p is OverlayPreset => p !== null)
+    .slice(0, MAX_OVERLAY_PRESETS);
   return {
     playout_active: s.playout_active === true,
     autopilot_enabled: s.autopilot_enabled === true,
@@ -131,6 +136,7 @@ export function parseChannelPlayoutSettings(settings: Json | null | undefined): 
     autopilot_push_hour: clampHour(s.autopilot_push_hour),
     transition_ms: clampTransition(s.transition_ms),
     overlays,
+    overlay_presets,
     last_mist_push_at: typeof s.last_mist_push_at === "string" ? s.last_mist_push_at : null,
     last_mist_push_error:
       typeof s.last_mist_push_error === "string" ? s.last_mist_push_error : null,
@@ -138,6 +144,23 @@ export function parseChannelPlayoutSettings(settings: Json | null | undefined): 
       typeof s.last_mist_push_schedule_id === "string" ? s.last_mist_push_schedule_id : null,
     autopilot_last_run_at:
       typeof s.autopilot_last_run_at === "string" ? s.autopilot_last_run_at : null,
+  };
+}
+
+function parsePreset(raw: unknown): OverlayPreset | null {
+  if (!raw || typeof raw !== "object") return null;
+  const p = raw as Record<string, unknown>;
+  const name = typeof p.name === "string" ? p.name.trim() : "";
+  if (!name) return null;
+  const overlaysRaw = Array.isArray(p.overlays) ? p.overlays : [];
+  const overlays = overlaysRaw
+    .map(parseOverlay)
+    .filter((o): o is OverlayConfig => o !== null)
+    .slice(0, MAX_OVERLAYS);
+  return {
+    id: typeof p.id === "string" ? p.id : crypto.randomUUID(),
+    name: name.slice(0, 60),
+    overlays,
   };
 }
 
