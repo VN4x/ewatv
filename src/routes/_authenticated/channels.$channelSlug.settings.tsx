@@ -200,6 +200,7 @@ function EditChannelView({
   const [name, setName] = useState(channel.name);
   const [slug, setSlug] = useState(channel.slug);
   const [overlays, setOverlays] = useState<OverlayConfig[]>(playout.overlays);
+  const [presets, setPresets] = useState<OverlayPreset[]>(playout.overlay_presets);
   const [fallback, setFallback] = useState(channel.fallback_youtube_url ?? "");
   const [gapSec, setGapSec] = useState<number>(Math.round(playout.transition_ms / 1000));
   const [pushHour, setPushHour] = useState<number>(playout.autopilot_push_hour);
