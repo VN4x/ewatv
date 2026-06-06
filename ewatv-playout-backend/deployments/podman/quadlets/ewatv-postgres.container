@@ -1,0 +1,22 @@
+[Unit]
+Description=EWATV Postgres (playout DB)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=ewatv-postgres
+Image=docker.io/library/postgres:16-alpine
+PublishPort=5433:5432
+Volume=ewatv_pgdata.volume:/var/lib/postgresql/data:Z
+Environment=POSTGRES_USER=ewatv
+Environment=POSTGRES_DB=ewatv_playout
+Secret=ewatv_db_password,type=env,target=POSTGRES_PASSWORD
+HealthCmd=pg_isready -U ewatv -d ewatv_playout
+HealthInterval=10s
+AutoUpdate=registry
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

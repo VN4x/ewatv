@@ -11,6 +11,8 @@ import (
 
 	"github.com/vn4x/ewatv-playout-backend/internal/config"
 	"github.com/vn4x/ewatv-playout-backend/internal/database"
+	"github.com/vn4x/ewatv-playout-backend/internal/ingest"
+	"github.com/vn4x/ewatv-playout-backend/internal/library"
 	"github.com/vn4x/ewatv-playout-backend/internal/platform"
 	"github.com/vn4x/ewatv-playout-backend/internal/server"
 )
@@ -25,7 +27,8 @@ func main() {
 	}
 
 	logger := platform.NewLogger(cfg.Logging)
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	db, err := database.Connect(ctx, cfg.Database, logger)
 	if err != nil {
@@ -39,7 +42,21 @@ func main() {
 	}
 	defer func() { _ = rdb.Close() }()
 
-	app := server.NewApp(cfg, logger, db, rdb)
+	repo := library.NewRepository(db.Pool)
+	libSvc := library.NewService(repo)
+
+	if cfg.Ingest.Enabled {
+		worker := ingest.NewWorker(repo, logger, cfg)
+		go worker.Run(ctx)
+	}
+
+	app := server.NewApp(server.Deps{
+		Config:  cfg,
+		Log:     logger,
+		DB:      db,
+		Redis:   rdb,
+		Library: libSvc,
+	})
 
 	go func() {
 		logger.Info().Str("addr", cfg.Server.Addr()).Msg("starting http server")
@@ -53,8 +70,9 @@ func main() {
 	<-quit
 
 	logger.Info().Msg("shutting down")
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
-	defer cancel()
+	cancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
+	defer shutdownCancel()
 	if err := app.ShutdownWithContext(shutdownCtx); err != nil {
 		logger.Error().Err(err).Msg("shutdown error")
 	}

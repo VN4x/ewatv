@@ -75,6 +75,17 @@ Backend exposes OpenAPI-compatible endpoints; frontend switches from Supabase cl
 }
 ```
 
+## Decision log (confirmed)
+
+| # | Decision | Choice |
+|---|----------|--------|
+| 1 | Database | Standalone Postgres 16 on AX42; Adminer optional (`profile: admin`); hosted Supabase kept for frontend auth only |
+| 2 | Auth | Validate **Supabase JWT** (HS256, project JWT secret via Podman secret or Infisical) |
+| 3 | Ingest | Pull **`source_ref` HTTPS URL** → `/data/videos/{id}/source.mp4` → ffprobe → FFmpeg CMAF pack |
+| 4 | Containers | **Podman** compose + quadlets + `podman secret`; Infisical optional for teams |
+
+Local dev clone: `A:\001code\1 Cursor\ewatv\ewatv-playout-backend` — see `LOCAL_SYNC.md`.
+
 ## Module map (6-agent workstream)
 
 | Agent | Module | Responsibility |

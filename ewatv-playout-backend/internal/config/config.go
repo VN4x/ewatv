@@ -17,6 +17,7 @@ type Config struct {
 	Storage   StorageConfig   `mapstructure:"storage"`
 	Playout   PlayoutConfig   `mapstructure:"playout"`
 	FFmpeg    FFmpegConfig    `mapstructure:"ffmpeg"`
+	Ingest    IngestConfig    `mapstructure:"ingest"`
 	Logging   LoggingConfig   `mapstructure:"logging"`
 	Metrics   MetricsConfig   `mapstructure:"metrics"`
 	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
@@ -43,9 +44,20 @@ type CORSConfig struct {
 }
 
 type AuthConfig struct {
-	JWTSecret string        `mapstructure:"jwt_secret"`
-	JWTIssuer string        `mapstructure:"jwt_issuer"`
-	TokenTTL  time.Duration `mapstructure:"token_ttl"`
+	JWTSecret             string        `mapstructure:"jwt_secret"`
+	JWTIssuer             string        `mapstructure:"jwt_issuer"`
+	TokenTTL              time.Duration `mapstructure:"token_ttl"`
+	SupabaseURL           string        `mapstructure:"supabase_url"`
+	SupabaseJWTSecret     string        `mapstructure:"supabase_jwt_secret"`
+	SupabaseJWTSecretFile string        `mapstructure:"supabase_jwt_secret_file"`
+	RequireAuth           bool          `mapstructure:"require_auth"`
+}
+
+type IngestConfig struct {
+	Enabled          bool          `mapstructure:"enabled"`
+	PollInterval     time.Duration `mapstructure:"poll_interval"`
+	DownloadTimeout  time.Duration `mapstructure:"download_timeout"`
+	MaxDownloadBytes int64         `mapstructure:"max_download_bytes"`
 }
 
 type DatabaseConfig struct {
@@ -129,6 +141,7 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
+	cfg.ApplySecretFiles()
 	return &cfg, nil
 }
 
@@ -149,6 +162,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("playout.timezone", "Europe/Helsinki")
 	v.SetDefault("playout.tick_interval", "500ms")
 	v.SetDefault("storage.root", "/data")
+	v.SetDefault("auth.require_auth", true)
+	v.SetDefault("ingest.enabled", true)
+	v.SetDefault("ingest.poll_interval", "5s")
+	v.SetDefault("ingest.download_timeout", "30m")
+	v.SetDefault("ingest.max_download_bytes", 10*1024*1024*1024)
 }
 
 func (c *Config) Validate() error {

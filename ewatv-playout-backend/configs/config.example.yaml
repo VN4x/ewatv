@@ -27,6 +27,17 @@ auth:
   jwt_secret: "change-me-in-production"
   jwt_issuer: "ewatv-playout"
   token_ttl: 24h
+  # Validate tokens from hosted Supabase (frontend login)
+  supabase_url: "https://your-project.supabase.co"
+  supabase_jwt_secret: ""          # or set EWATV_AUTH_SUPABASE_JWT_SECRET
+  supabase_jwt_secret_file: ""     # Podman: /run/secrets/ewatv_jwt_secret
+  require_auth: true               # false only for local dev
+
+ingest:
+  enabled: true
+  poll_interval: 5s
+  download_timeout: 30m
+  max_download_bytes: 10737418240  # 10 GiB
 
 database:
   url: "postgres://ewatv:ewatv@localhost:5433/ewatv_playout?sslmode=disable"

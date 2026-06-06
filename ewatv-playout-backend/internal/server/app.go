@@ -9,10 +9,22 @@ import (
 	"github.com/vn4x/ewatv-playout-backend/internal/config"
 	"github.com/vn4x/ewatv-playout-backend/internal/database"
 	"github.com/vn4x/ewatv-playout-backend/internal/handlers"
+	"github.com/vn4x/ewatv-playout-backend/internal/library"
 	"github.com/vn4x/ewatv-playout-backend/internal/middleware"
 )
 
-func NewApp(cfg *config.Config, log zerolog.Logger, db *database.DB, rdb *database.Redis) *fiber.App {
+type Deps struct {
+	Config  *config.Config
+	Log     zerolog.Logger
+	DB      *database.DB
+	Redis   *database.Redis
+	Library *library.Service
+}
+
+func NewApp(deps Deps) *fiber.App {
+	cfg := deps.Config
+	log := deps.Log
+
 	app := fiber.New(fiber.Config{
 		AppName:      "ewatv-playout-backend",
 		ReadTimeout:  cfg.Server.ReadTimeout,
@@ -32,7 +44,7 @@ func NewApp(cfg *config.Config, log zerolog.Logger, db *database.DB, rdb *databa
 
 	middleware.Stack(app, cfg, log)
 
-	health := handlers.NewHealth(db, rdb)
+	health := handlers.NewHealth(deps.DB, deps.Redis)
 	health.Register(app)
 
 	if cfg.Metrics.Enabled {
@@ -52,7 +64,12 @@ func NewApp(cfg *config.Config, log zerolog.Logger, db *database.DB, rdb *databa
 		})
 	})
 
-	// Phase 2+: register video, schedule, channel, playout handlers here.
+	if deps.Library != nil {
+		auth := middleware.SupabaseAuth(cfg.Auth)
+		videos := handlers.NewVideos(deps.Library)
+		admin := api.Group("", auth)
+		videos.Register(admin)
+	}
 
 	return app
 }
