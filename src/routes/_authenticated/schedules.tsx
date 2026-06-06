@@ -18,6 +18,15 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  isPlayoutBackend,
+  listChannels,
+  getSchedule,
+  saveScheduleToBackend,
+  runAutopilotBackend,
+  updateChannel,
+} from "@/lib/data";
+import { mergePlayoutIntoSettings } from "@/lib/channels/settings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -110,14 +119,12 @@ function SchedulesPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  const playout = isPlayoutBackend();
+
   const { data: channels = [] } = useQuery({
     queryKey: ["channels"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("channels")
-        .select("id,name,slug,settings")
-        .order("name");
-      if (error) throw error;
+      const data = await listChannels();
       return data as Channel[];
     },
   });
@@ -144,6 +151,20 @@ function SchedulesPage() {
     enabled: !!channelId && !!date,
     queryKey: ["schedule", channelId, date],
     queryFn: async () => {
+      if (playout && channelId) {
+        const view = await getSchedule(channelId, date);
+        if (!view?.schedule) return { schedule: null, items: [] as Item[] };
+        const mapped: Item[] = (view.items ?? []).map((r) => ({
+          id: r.id,
+          video_id: r.video_id ?? "",
+          title: (r.source_snapshot?.title as string) ?? "(video)",
+          duration_ms: r.duration_ms,
+          transition_ms: r.transition_ms,
+          source_snapshot: r.source_snapshot as Item["source_snapshot"],
+          persisted: true,
+        }));
+        return { schedule: view.schedule, items: mapped };
+      }
       const { data: sched, error } = await supabase
         .from("schedules")
         .select("id,autopilot")
@@ -244,6 +265,21 @@ function SchedulesPage() {
   const saveMut = useMutation({
     mutationFn: async () => {
       if (!channelId) throw new Error("Pick a channel");
+      const itemsPayload = computed.map((it) => ({
+        video_id: it.video_id,
+        duration_ms: it.duration_ms,
+        transition_ms: it.transition_ms,
+        start_at: it.start_at!,
+        source_snapshot: it.source_snapshot,
+      }));
+      if (playout) {
+        return saveScheduleToBackend(channelId, date, {
+          autopilot: channelSettings.autopilot_enabled,
+          existing_schedule_id: loaded?.schedule?.id,
+          items: itemsPayload,
+          recompute_start_at: false,
+        });
+      }
       return saveScheduleAndPush({
         data: {
           channelId,
@@ -262,7 +298,9 @@ function SchedulesPage() {
       });
     },
     onSuccess: (result) => {
-      if (result.pushed) {
+      if (playout) {
+        toast.success("Schedule saved to playout engine");
+      } else if (result.pushed) {
         toast.success("Schedule saved and pushed to Mist");
       } else if (result.pushError) {
         toast.error(`Saved, but Mist push failed: ${result.pushError}`);
@@ -283,12 +321,24 @@ function SchedulesPage() {
   const playoutToggleMut = useMutation({
     mutationFn: async (active: boolean) => {
       if (!channelId) throw new Error("Pick a channel");
+      if (playout) {
+        const settings = mergePlayoutIntoSettings(selectedChannel?.settings ?? null, {
+          playout_active: active,
+        });
+        return updateChannel(channelId, { playout_active: active, settings });
+      }
       return updateChannelPlayout({ data: { channelId, playoutActive: active } });
     },
     onSuccess: (_res, active) => {
       setPlayoutActive(active);
       toast.success(
-        active ? "Playout active — saves for today push to Mist" : "Playout paused",
+        playout
+          ? active
+            ? "Playout active — HLS live from Go engine"
+            : "Playout paused"
+          : active
+            ? "Playout active — saves for today push to Mist"
+            : "Playout paused",
       );
       qc.invalidateQueries({ queryKey: ["channels"] });
     },
@@ -299,10 +349,13 @@ function SchedulesPage() {
   const autopilotMut = useMutation({
     mutationFn: async () => {
       if (!channelId) throw new Error("Pick a channel");
+      if (playout) return runAutopilotBackend(channelId, { days: 7, from_date: date });
       return runAutopilotNow({ data: { channelId } });
     },
     onSuccess: (res) => {
-      const n = res.generated?.length ?? 0;
+      const n = playout
+        ? (res as { generated?: unknown[] }).generated?.length ?? 0
+        : (res as { generated?: unknown[] }).generated?.length ?? 0;
       toast.success(`Weekly refresh: ${n} day(s) generated`);
       qc.invalidateQueries({ queryKey: ["schedule", channelId, date] });
       qc.invalidateQueries({ queryKey: ["channels"] });

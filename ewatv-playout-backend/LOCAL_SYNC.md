@@ -1,10 +1,17 @@
-# Local sync — Windows dev path
+# Local sync — Windows dev paths
 
-Your canonical clone path:
+## ewatvGO (standalone Go stack — recommended)
 
 ```text
-A:\001code\1 Cursor\ewatv\
-└── ewatv-playout-backend\    ← Go backend (standalone, no Supabase)
+A:\001code\1 Cursor\ewatvGO\
+```
+
+See **[CLONE_EWATVGO.md](./CLONE_EWATVGO.md)** for clone + run instructions.
+
+## Legacy path
+
+```text
+A:\001code\1 Cursor\ewatv\ewatv-playout-backend\
 ```
 
 ## Pull latest from GitHub

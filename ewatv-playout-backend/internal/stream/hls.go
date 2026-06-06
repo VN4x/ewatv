@@ -19,21 +19,36 @@ func NewHLS(engine *playout.Engine) *HLS {
 }
 
 func (h *HLS) Register(app fiber.Router) {
-	app.Get("/hls/:slug/index.m3u8", h.ServeManifest)
-	app.Get("/hls/:slug/:file", h.ServeSegment)
+	app.Get("/hls/:slug/index.m3u8", h.ServeMaster)
+	app.Get("/hls/:slug/:variant/index.m3u8", h.ServeVariant)
+	app.Get("/hls/:slug/:variant/:file", h.ServeSegment)
+	// Legacy single-level segment path (720p)
+	app.Get("/hls/:slug/:file", h.ServeLegacyFile)
 }
 
-func (h *HLS) ServeManifest(c *fiber.Ctx) error {
+func (h *HLS) ServeMaster(c *fiber.Ctx) error {
 	slug := c.Params("slug")
 	view, ok := h.engine.GetManifest(slug)
 	if !ok || len(view.Body) == 0 {
 		return c.Status(fiber.StatusNotFound).SendString("stream not available")
 	}
+	return h.sendManifest(c, view)
+}
 
+func (h *HLS) ServeVariant(c *fiber.Ctx) error {
+	slug := c.Params("slug")
+	variant := c.Params("variant")
+	view, ok := h.engine.GetVariantManifest(slug, variant)
+	if !ok || len(view.Body) == 0 {
+		return c.Status(fiber.StatusNotFound).SendString("variant not available")
+	}
+	return h.sendManifest(c, view)
+}
+
+func (h *HLS) sendManifest(c *fiber.Ctx, view playout.ManifestView) error {
 	if inm := c.Get("If-None-Match"); inm != "" && inm == view.ETag {
 		return c.SendStatus(fiber.StatusNotModified)
 	}
-
 	c.Set("Content-Type", "application/vnd.apple.mpegurl")
 	c.Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	if view.ETag != "" {
@@ -44,16 +59,33 @@ func (h *HLS) ServeManifest(c *fiber.Ctx) error {
 
 func (h *HLS) ServeSegment(c *fiber.Ctx) error {
 	slug := c.Params("slug")
+	variant := c.Params("variant")
 	file := filepath.Base(c.Params("file"))
-	if file == "" || file == "." || strings.Contains(file, "..") {
+	if file == "" || strings.Contains(file, "..") {
 		return c.Status(fiber.StatusBadRequest).SendString("invalid file")
 	}
 
-	dir, ok := h.engine.LiveDir(slug)
+	dir, ok := h.engine.LiveDir(slug, variant)
 	if !ok {
 		return c.Status(fiber.StatusNotFound).SendString("stream not available")
 	}
+	return h.sendFile(c, dir, file)
+}
 
+func (h *HLS) ServeLegacyFile(c *fiber.Ctx) error {
+	slug := c.Params("slug")
+	file := filepath.Base(c.Params("file"))
+	if file == "index.m3u8" {
+		return h.ServeMaster(c)
+	}
+	dir, ok := h.engine.LiveDir(slug, "720p")
+	if !ok {
+		return c.Status(fiber.StatusNotFound).SendString("stream not available")
+	}
+	return h.sendFile(c, dir, file)
+}
+
+func (h *HLS) sendFile(c *fiber.Ctx, dir, file string) error {
 	path := filepath.Join(dir, file)
 	info, err := os.Stat(path)
 	if err != nil {

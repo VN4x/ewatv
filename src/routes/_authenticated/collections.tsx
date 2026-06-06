@@ -3,6 +3,15 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  listCollections,
+  listVideos,
+  deleteVideo,
+  deleteCollection,
+  insertCollection,
+  upsertVideo,
+  isPlayoutBackend,
+} from "@/lib/data";
 import { probeVideoDuration } from "@/lib/api/probe.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,26 +65,16 @@ function CollectionsPage() {
 
   const { data: collections = [] } = useQuery({
     queryKey: ["collections"],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("collections")
-        .select("*")
-        .order("name");
-      if (error) throw error;
-      return data as Collection[];
-    },
+    queryFn: () => listCollections(),
   });
 
   const { data: videos = [], isLoading: videosLoading } = useQuery({
     queryKey: ["videos", selectedCollection, search],
-    queryFn: async () => {
-      let q = supabase.from("videos").select("*").order("created_at", { ascending: false });
-      if (selectedCollection) q = q.eq("collection_id", selectedCollection);
-      if (search.trim()) q = q.or(`title.ilike.%${search}%,description.ilike.%${search}%,category.ilike.%${search}%`);
-      const { data, error } = await q;
-      if (error) throw error;
-      return data as Video[];
-    },
+    queryFn: () =>
+      listVideos({
+        collectionId: selectedCollection,
+        search: search.trim() || undefined,
+      }),
   });
 
   const tree = useMemo(() => buildTree(collections), [collections]);
@@ -214,11 +213,12 @@ function CollectionsPage() {
                         variant="ghost"
                         onClick={async () => {
                           if (!confirm("Delete this video?")) return;
-                          const { error } = await supabase.from("videos").delete().eq("id", v.id);
-                          if (error) toast.error(error.message);
-                          else {
+                          try {
+                            await deleteVideo(v.id);
                             toast.success("Deleted");
                             qc.invalidateQueries({ queryKey: ["videos"] });
+                          } catch (e) {
+                            toast.error(e instanceof Error ? e.message : "Delete failed");
                           }
                         }}
                       >
@@ -284,8 +284,12 @@ function TreeNode({
             className="h-6 w-6"
             onClick={async () => {
               if (!confirm(`Delete folder "${node.name}"? Subfolders will be deleted; videos in it will move to "All".`)) return;
-              const { error } = await supabase.from("collections").delete().eq("id", node.id);
-              if (error) toast.error(error.message); else onChanged();
+              try {
+                await deleteCollection(node.id);
+                onChanged();
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Delete failed");
+              }
             }}
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -329,20 +333,18 @@ function NewFolderDialog({ parentId, onCreated, compact }: { parentId: string | 
         <DialogFooter>
           <Button
             onClick={async () => {
-              const { data: u } = await supabase.auth.getUser();
-              if (!u.user) return;
-              const { error } = await supabase.from("collections").insert({
-                owner_id: u.user.id,
-                parent_id: parentId,
-                name: name.trim(),
-                description: description.trim() || null,
-              });
-              if (error) toast.error(error.message);
-              else {
+              try {
+                await insertCollection({
+                  parent_id: parentId,
+                  name: name.trim(),
+                  description: description.trim() || null,
+                });
                 toast.success("Folder created");
                 setOpen(false);
                 setName(""); setDescription("");
                 onCreated();
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Create failed");
               }
             }}
             disabled={!name.trim()}
@@ -382,10 +384,7 @@ function VideoDialog({
 
   const save = useMutation({
     mutationFn: async () => {
-      const { data: u } = await supabase.auth.getUser();
-      if (!u.user) throw new Error("Not authenticated");
       const payload = {
-        owner_id: u.user.id,
         collection_id: collectionId,
         title: title.trim(),
         description: description.trim() || null,
@@ -398,13 +397,7 @@ function VideoDialog({
         hide_overlay: hideOverlay,
         auto_subs: autoSubs,
       };
-      if (existing) {
-        const { error } = await supabase.from("videos").update(payload).eq("id", existing.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("videos").insert(payload);
-        if (error) throw error;
-      }
+      await upsertVideo(existing ? { id: existing.id } : null, payload);
     },
     onSuccess: () => {
       toast.success(existing ? "Updated" : "Added");

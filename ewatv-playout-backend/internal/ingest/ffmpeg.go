@@ -127,7 +127,7 @@ func (p *Packer) PackCMAF(ctx context.Context, sourcePath, outDir string) error 
 }
 
 func SegmentDir(storageRoot, videoID string) string {
-	return filepath.Join(storageRoot, "segments", videoID, "cmaf")
+	return RenditionDir(storageRoot, videoID, "720p")
 }
 
 func SourcePath(storageRoot, videoID string) string {

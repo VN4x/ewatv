@@ -10,19 +10,22 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/vn4x/ewatv-playout-backend/internal/config"
+	"github.com/vn4x/ewatv-playout-backend/internal/ingest"
 	"github.com/vn4x/ewatv-playout-backend/internal/models"
 )
 
 type channelRuntime struct {
-	channel      models.Channel
-	items        []ItemWithVideo
-	scheduleDate string
-	nowPlaying   NowPlayingResult
-	manifest     []byte
-	etag         string
-	liveDir      string
-	currentItem  *uuid.UUID
-	offsetMs     int
+	channel          models.Channel
+	items            []ItemWithVideo
+	scheduleDate     string
+	nowPlaying       NowPlayingResult
+	masterManifest   []byte
+	masterETag       string
+	variantManifest  map[string][]byte
+	variantETag      map[string]string
+	liveBaseDir      string
+	currentItem      *uuid.UUID
+	offsetMs         int
 }
 
 type Engine struct {
@@ -90,8 +93,10 @@ func (e *Engine) ensureChannelLoop(ctx context.Context, ch models.Channel) {
 	}
 
 	rt := &channelRuntime{
-		channel: ch,
-		liveDir: filepath.Join(e.cfg.Storage.ChannelsPath(), ch.Slug, "live"),
+		channel:         ch,
+		liveBaseDir:     filepath.Join(e.cfg.Storage.ChannelsPath(), ch.Slug, "live"),
+		variantManifest: make(map[string][]byte),
+		variantETag:     make(map[string]string),
 	}
 	e.mu.Lock()
 	e.channels[ch.ID] = rt
@@ -166,31 +171,42 @@ func (e *Engine) tick(ctx context.Context, channelID uuid.UUID) error {
 		itemOffset = offsetMs
 	}
 
-	manifest := rt.manifest
-	etag := rt.etag
+	masterManifest := rt.masterManifest
+	masterETag := rt.masterETag
+	variantManifest := make(map[string][]byte)
+	variantETag := make(map[string]string)
+
 	if startIdx >= 0 {
-		res, err := BuildLiveManifest(ManifestInput{
-			Items:          items,
-			StartItemIdx:   startIdx,
-			OffsetMs:       itemOffset,
-			WindowSegments: e.cfg.Playout.ManifestWindowSegments,
-			LiveDir:        rt.liveDir,
-			Storage:        e.cfg.Storage,
-			At:             at,
-		})
-		if err != nil {
-			e.log.Warn().Err(err).Str("slug", ch.Slug).Msg("build manifest")
-		} else if res != nil {
-			manifest = res.Body
-			etag = res.ETag
+		for _, rend := range ingest.DefaultRenditions {
+			liveDir := filepath.Join(rt.liveBaseDir, rend.Name)
+			res, err := BuildLiveManifest(ManifestInput{
+				Items:          items,
+				StartItemIdx:   startIdx,
+				OffsetMs:       itemOffset,
+				WindowSegments: e.cfg.Playout.ManifestWindowSegments,
+				LiveDir:        liveDir,
+				Storage:        e.cfg.Storage,
+				At:             at,
+				Rendition:      rend.Name,
+			})
+			if err != nil {
+				e.log.Warn().Err(err).Str("slug", ch.Slug).Str("rendition", rend.Name).Msg("build manifest")
+				continue
+			}
+			if res != nil {
+				variantManifest[rend.Name] = res.Body
+				variantETag[rend.Name] = res.ETag
+			}
 		}
+		masterManifest = BuildMasterManifest(ch.Slug, ingest.DefaultRenditions)
+		masterETag = hashBytes(masterManifest)
 	}
 
 	var schedDatePtr *string
 	if today != "" {
 		schedDatePtr = &today
 	}
-	if err := e.repo.UpsertPlayoutState(ctx, ch.ID, schedDatePtr, itemID, offsetMs, etag); err != nil {
+	if err := e.repo.UpsertPlayoutState(ctx, ch.ID, schedDatePtr, itemID, offsetMs, masterETag); err != nil {
 		e.log.Warn().Err(err).Str("slug", ch.Slug).Msg("update playout_state")
 	}
 
@@ -199,8 +215,10 @@ func (e *Engine) tick(ctx context.Context, channelID uuid.UUID) error {
 		rt.items = items
 		rt.scheduleDate = today
 		rt.nowPlaying = now
-		rt.manifest = manifest
-		rt.etag = etag
+		rt.masterManifest = masterManifest
+		rt.masterETag = masterETag
+		rt.variantManifest = variantManifest
+		rt.variantETag = variantETag
 		rt.currentItem = itemID
 		rt.offsetMs = offsetMs
 	}
@@ -266,19 +284,42 @@ func (e *Engine) GetManifest(slug string) (ManifestView, bool) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	for _, rt := range e.channels {
-		if rt.channel.Slug == slug && len(rt.manifest) > 0 {
-			return ManifestView{Body: rt.manifest, ETag: rt.etag, Dir: rt.liveDir}, true
+		if rt.channel.Slug == slug && len(rt.masterManifest) > 0 {
+			return ManifestView{Body: rt.masterManifest, ETag: rt.masterETag, Dir: rt.liveBaseDir}, true
 		}
 	}
 	return ManifestView{}, false
 }
 
-func (e *Engine) LiveDir(slug string) (string, bool) {
+func (e *Engine) GetVariantManifest(slug, variant string) (ManifestView, bool) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	for _, rt := range e.channels {
+		if rt.channel.Slug != slug {
+			continue
+		}
+		body, ok := rt.variantManifest[variant]
+		if !ok || len(body) == 0 {
+			return ManifestView{}, false
+		}
+		return ManifestView{
+			Body: body,
+			ETag: rt.variantETag[variant],
+			Dir:  filepath.Join(rt.liveBaseDir, variant),
+		}, true
+	}
+	return ManifestView{}, false
+}
+
+func (e *Engine) LiveDir(slug, variant string) (string, bool) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	for _, rt := range e.channels {
 		if rt.channel.Slug == slug {
-			return rt.liveDir, true
+			if variant != "" {
+				return filepath.Join(rt.liveBaseDir, variant), true
+			}
+			return rt.liveBaseDir, true
 		}
 	}
 	return "", false

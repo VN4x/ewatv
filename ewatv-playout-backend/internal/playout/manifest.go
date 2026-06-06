@@ -33,6 +33,7 @@ type ManifestInput struct {
 	LiveDir        string
 	Storage        config.StorageConfig
 	At             time.Time
+	Rendition      string // 720p, 480p, 360p
 }
 
 type ManifestResult struct {
@@ -129,7 +130,7 @@ func collectWindowSegments(in ManifestInput) ([]manifestSegment, error) {
 			continue
 		}
 
-		cmafDir := ingest.SegmentDir(in.Storage.SegmentsPath(), videoID)
+		cmafDir := ingest.RenditionDir(in.Storage.SegmentsPath(), videoID, renditionName(in.Rendition))
 		sourceSegs, err := listCMAFSegments(cmafDir)
 		if err != nil {
 			return nil, err
@@ -279,6 +280,27 @@ func slateCMAFDir(storage config.StorageConfig) string {
 func hashBytes(b []byte) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:8])
+}
+
+func renditionName(r string) string {
+	if r == "" {
+		return "720p"
+	}
+	return r
+}
+
+// BuildMasterManifest lists ABR variant media playlists for hls.js adaptive switching.
+func BuildMasterManifest(slug string, renditions []ingest.Rendition) []byte {
+	var b strings.Builder
+	b.WriteString("#EXTM3U\n")
+	b.WriteString("#EXT-X-VERSION:7\n")
+	for _, r := range renditions {
+		b.WriteString(fmt.Sprintf("#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d,CODECS=\"avc1.4d401f,mp4a.40.2\"\n",
+			r.Bandwidth, r.Height*16/9, r.Height))
+		b.WriteString(fmt.Sprintf("%s/index.m3u8\n", r.Name))
+	}
+	_ = slug
+	return []byte(b.String())
 }
 
 // ParseSegmentSeq extracts the numeric sequence from seg_NNNNN.m4s filenames.

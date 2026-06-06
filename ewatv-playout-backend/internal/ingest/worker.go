@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
@@ -101,7 +102,7 @@ func (w *Worker) processVideo(ctx context.Context, videoID uuid.UUID) error {
 	}
 
 	dest := SourcePath(w.storage.Root, videoID.String())
-	segDir := SegmentDir(w.storage.Root, videoID.String())
+	videoSegRoot := filepath.Join(w.storage.Root, "segments", videoID.String())
 
 	if _, statErr := os.Stat(dest); statErr != nil {
 		if !errors.Is(statErr, os.ErrNotExist) {
@@ -128,7 +129,7 @@ func (w *Worker) processVideo(ctx context.Context, videoID uuid.UUID) error {
 		return err
 	}
 
-	if err := w.packer.PackCMAF(ctx, dest, segDir); err != nil {
+	if err := w.packer.PackABR(ctx, dest, videoSegRoot, nil); err != nil {
 		return err
 	}
 
