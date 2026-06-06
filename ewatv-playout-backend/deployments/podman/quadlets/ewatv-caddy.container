@@ -1,0 +1,22 @@
+[Unit]
+Description=EWATV Caddy reverse proxy (TLS + Tailscale)
+After=ewatv-playout.service
+Requires=ewatv-playout.service
+
+[Container]
+ContainerName=ewatv-caddy
+Image=docker.io/library/caddy:2-alpine
+Network=ewatv-net.network
+PublishPort=443:443
+PublishPort=80:80
+Environment=EWATV_DOMAIN=ewatv.ax42.example.ts.net
+Volume=./Caddyfile:/etc/caddy/Caddyfile:ro,Z
+Volume=ewatv_caddy_data.volume:/data:Z
+Volume=ewatv_caddy_config.volume:/config:Z
+HealthCmd=wget -qO- http://127.0.0.1:80/health || exit 1
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

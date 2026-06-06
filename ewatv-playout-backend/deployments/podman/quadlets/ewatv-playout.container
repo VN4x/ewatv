@@ -1,0 +1,24 @@
+[Unit]
+Description=EWATV Playout Backend
+After=ewatv-postgres.service ewatv-redis.service
+Requires=ewatv-postgres.service ewatv-redis.service
+
+[Container]
+ContainerName=ewatv-playout
+Image=localhost/ewatv-playout:latest
+Network=ewatv-net.network
+# No host publish — Caddy is the only public entrypoint
+Volume=ewatv_playout_data.volume:/data:Z
+Environment=EWATV_REDIS_URL=redis://ewatv-redis:6379/0
+Environment=EWATV_LOGGING_FORMAT=json
+Environment=EWATV_STORAGE_ROOT=/data
+Environment=EWATV_PLAYOUT_PUBLIC_BASE_URL=https://ewatv.ax42.example.ts.net
+Secret=ewatv_database_url,type=env,target=EWATV_DATABASE_URL
+Secret=ewatv_jwt_secret,type=env,target=EWATV_AUTH_JWT_SECRET
+HealthCmd=curl -sf http://127.0.0.1:8090/health
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

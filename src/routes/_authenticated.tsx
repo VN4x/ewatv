@@ -1,6 +1,8 @@
-import { createFileRoute, Outlet, redirect, Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { createFileRoute, Outlet, Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { isPlayoutBackend } from "@/lib/playout-backend/config";
+import { isLoggedIn, clearSession } from "@/lib/playout-backend/auth-store";
 import { Button } from "@/components/ui/button";
 import { Tv, Library, Calendar, MonitorPlay, LogOut, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,9 +17,19 @@ function AuthenticatedLayout() {
   const [checking, setChecking] = useState(true);
   const [authed, setAuthed] = useState(false);
   const path = useRouterState({ select: (s) => s.location.pathname });
+  const playout = isPlayoutBackend();
 
   useEffect(() => {
     let mounted = true;
+    if (playout) {
+      if (!isLoggedIn()) {
+        navigate({ to: "/login", replace: true });
+      } else {
+        setAuthed(true);
+        setChecking(false);
+      }
+      return;
+    }
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       if (!mounted) return;
       if (!session) {
@@ -40,7 +52,7 @@ function AuthenticatedLayout() {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [navigate]);
+  }, [navigate, playout]);
 
   if (checking || !authed) {
     return (
@@ -65,6 +77,11 @@ function AuthenticatedLayout() {
             <Link to="/collections" className="flex items-center gap-2 font-semibold">
               <Tv className="h-5 w-5 text-primary" />
               ewatv
+              {playout && (
+                <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
+                  GO
+                </span>
+              )}
             </Link>
             <nav className="flex items-center gap-1">
               {nav.map((n) => {
@@ -91,7 +108,11 @@ function AuthenticatedLayout() {
               variant="ghost"
               size="sm"
               onClick={async () => {
-                await supabase.auth.signOut();
+                if (playout) {
+                  clearSession();
+                } else {
+                  await supabase.auth.signOut();
+                }
                 navigate({ to: "/login", replace: true });
               }}
             >

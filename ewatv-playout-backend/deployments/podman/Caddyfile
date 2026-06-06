@@ -1,0 +1,53 @@
+# Caddy reverse proxy — EWATV playout (Tailscale + public TLS)
+
+# Replace with your Tailscale MagicDNS name or public domain.
+# Example MagicDNS: ewatv.ax42.your-tailnet.ts.net
+{$EWATV_DOMAIN:localhost} {
+	encode gzip zstd
+
+	# API + admin
+	handle /v1/* {
+		reverse_proxy ewatv-playout:8090
+	}
+	handle /health {
+		reverse_proxy ewatv-playout:8090
+	}
+	handle /ready {
+		reverse_proxy ewatv-playout:8090
+	}
+	handle /metrics {
+		@internal remote_ip 100.64.0.0/10 127.0.0.0/8
+		handle @internal {
+			reverse_proxy ewatv-playout:8090
+		}
+		respond "Forbidden" 403
+	}
+
+	# HLS linear streams (public viewers on tailnet or internet)
+	handle /hls/* {
+		header Cache-Control "no-cache"
+		reverse_proxy ewatv-playout:8090
+	}
+
+	# Optional: serve static admin SPA build
+	# handle /* {
+	#     root * /srv/admin
+	#     try_files {path} /index.html
+	#     file_server
+	# }
+
+	log {
+		output stdout
+		format json
+	}
+}
+
+# Internal-only admin (Tailscale CGNAT range — adjust to your tailnet)
+# Uncomment for split admin vs public HLS on different hostnames.
+# admin.{$EWATV_DOMAIN} {
+#     @ts remote_ip 100.64.0.0/10
+#     handle @ts {
+#         reverse_proxy ewatv-playout:8090
+#     }
+#     respond "Tailscale only" 403
+# }
