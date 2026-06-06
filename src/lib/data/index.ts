@@ -4,8 +4,10 @@
 import { supabase } from "@/integrations/supabase/client";
 import { isPlayoutBackend } from "@/lib/playout-backend/config";
 import { playoutApi } from "@/lib/playout-backend/api";
+import { sanitizeSearch } from "./search";
 
 export { isPlayoutBackend };
+export { sanitizeSearch };
 
 export async function listCollections() {
   if (isPlayoutBackend()) return playoutApi.listCollections();
@@ -18,15 +20,14 @@ export async function listVideos(opts?: { collectionId?: string | null; search?:
   if (isPlayoutBackend()) {
     return playoutApi.listVideos({
       collection_id: opts?.collectionId ?? undefined,
-      search: opts?.search,
+      search: sanitizeSearch(opts?.search),
     });
   }
   let q = supabase.from("videos").select("*").order("created_at", { ascending: false });
   if (opts?.collectionId) q = q.eq("collection_id", opts.collectionId);
-  if (opts?.search?.trim()) {
-    q = q.or(
-      `title.ilike.%${opts.search}%,description.ilike.%${opts.search}%,category.ilike.%${opts.search}%`,
-    );
+  const search = sanitizeSearch(opts?.search);
+  if (search) {
+    q = q.or(`title.ilike.%${search}%,description.ilike.%${search}%,category.ilike.%${search}%`);
   }
   const { data, error } = await q;
   if (error) throw error;
@@ -136,3 +137,14 @@ export async function runAutopilotBackend(
   if (isPlayoutBackend()) return playoutApi.runAutopilot(channelId, body);
   throw new Error("Use runAutopilotNow server fn in Supabase mode");
 }
+
+export {
+  getChannelBySlug,
+  createChannel,
+  deleteChannel,
+  saveChannelSettings,
+  isSlugTaken,
+  updateChannelPlayoutSettings,
+} from "./channels";
+
+export { getPrevScheduleEnd, createEmptySchedule } from "./schedules";

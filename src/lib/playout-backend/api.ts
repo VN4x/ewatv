@@ -121,6 +121,11 @@ export const playoutApi = {
   deleteChannel: (id: string) =>
     playoutFetch<void>(`/v1/channels/${id}`, { method: "DELETE" }),
 
+  listSchedules: (channelId: string) =>
+    playoutFetch<{ items: { id: string; schedule_date: string }[] }>(
+      `/v1/channels/${channelId}/schedules`,
+    ).then((r) => r.items),
+
   getSchedule: (channelId: string, date: string) =>
     playoutFetch<ScheduleView>(`/v1/channels/${channelId}/schedules/${date}`),
 

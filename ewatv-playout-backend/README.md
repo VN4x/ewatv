@@ -32,7 +32,7 @@ make podman-dev && make run
 | 3 | Collections, channels, schedules | ✅ |
 | 4 | Autopilot + playout engine + HLS | ✅ |
 | 5 | DASH, WebSocket, cron | 🔜 |
-| 6 | Frontend API client package | 🔜 |
+| 6 | Frontend API client package | ✅ |
 
 ## Docs
 
