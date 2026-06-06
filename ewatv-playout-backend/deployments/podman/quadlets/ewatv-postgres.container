@@ -6,7 +6,7 @@ Wants=network-online.target
 [Container]
 ContainerName=ewatv-postgres
 Image=docker.io/library/postgres:16-alpine
-PublishPort=5433:5432
+Network=ewatv-net.network
 Volume=ewatv_pgdata.volume:/var/lib/postgresql/data:Z
 Environment=POSTGRES_USER=ewatv
 Environment=POSTGRES_DB=ewatv_playout

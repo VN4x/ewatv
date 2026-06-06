@@ -5,7 +5,7 @@ After=network-online.target
 [Container]
 ContainerName=ewatv-redis
 Image=docker.io/library/redis:7-alpine
-PublishPort=6379:6379
+Network=ewatv-net.network
 Exec=redis-server --save "" --appendonly no --maxmemory 256mb --maxmemory-policy allkeys-lru
 HealthCmd=redis-cli ping
 AutoUpdate=registry

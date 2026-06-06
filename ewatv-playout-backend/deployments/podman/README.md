@@ -64,13 +64,19 @@ See `deployments/podman/infisical.env.example`.
 ## Systemd quadlets (24/7 on AX42)
 
 ```bash
-sudo cp deployments/podman/quadlets/*.container /etc/containers/systemd/
-sudo cp deployments/podman/quadlets/*.volume /etc/containers/systemd/
-systemctl --user daemon-reload   # or sudo for system units
-systemctl --user enable --now ewatv-postgres ewatv-redis ewatv-playout
+sudo ./deployments/podman/scripts/create-secrets.sh
+sudo ./deployments/podman/scripts/install-quadlets.sh
+
+sudo systemctl enable --now ewatv-network.service
+sudo systemctl enable --now ewatv-postgres.service ewatv-redis.service
+sudo systemctl enable --now ewatv-playout.service ewatv-caddy.service
 ```
 
-Quadlets use the same images/volumes as compose; suitable for auto-start after reboot.
+Stack: **Postgres → Redis → Playout → Caddy** on `ewatv-net`. Playout is internal-only; Caddy exposes :443/:80.
+
+**Tailscale + Caddy:** see [tailscale/README.md](./tailscale/README.md).
+
+**Nightly playout cron:** not needed — engine auto-loads each calendar day from Postgres. See [docs/SCHEDULE_AND_CRON.md](../../docs/SCHEDULE_AND_CRON.md).
 
 ## Data volumes
 
