@@ -27,7 +27,7 @@ curl http://localhost:8090/ready
 | `playout` | local Containerfile | ~50–150 MB | Go API + ingest worker |
 | `adminer` | adminer:4 (profile `admin`) | ~15 MB | Optional DB UI |
 
-**Why not full self-hosted Supabase here?** Supabase adds Kong, GoTrue, PostgREST, Realtime (~1 GB+ RAM). The playout engine only needs Postgres. Keep hosted Supabase for **frontend auth**; validate JWTs locally. Optional Supabase self-host is documented in `compose.supabase.yaml` for teams that want Studio on-prem.
+**Why not full self-hosted Supabase?** Adds ~1 GB RAM (Kong, GoTrue, etc.). This backend includes its own auth + REST API — only Postgres is needed. Optional **Adminer** (`profile: admin`) for SQL UI.
 
 **Why not PocketBase?** SQLite single-writer limits concurrent ingest + playout queries on multi-channel 24/7 workloads.
 
@@ -41,7 +41,7 @@ curl http://localhost:8090/ready
 
 Creates:
 - `ewatv_db_password`
-- `ewatv_jwt_secret` (must match hosted Supabase JWT secret for token validation)
+- `ewatv_jwt_secret` — local playout JWT signing secret
 - `ewatv_redis_password` (optional)
 
 Secrets mount as files under `/run/secrets/` inside containers.

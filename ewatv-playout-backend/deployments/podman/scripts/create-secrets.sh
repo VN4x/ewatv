@@ -18,7 +18,7 @@ create_secret() {
 
 echo "=== EWATV Podman secrets ==="
 create_secret ewatv_db_password "Postgres password"
-create_secret ewatv_jwt_secret "Supabase JWT secret (Settings → API → JWT Secret)"
+create_secret ewatv_jwt_secret "Local playout JWT signing secret (min 32 chars)"
 
 if ! podman secret inspect ewatv_database_url &>/dev/null; then
   read -rsp "Postgres password (again, for connection URL): " dbpw

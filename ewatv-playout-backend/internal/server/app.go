@@ -6,19 +6,29 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 
+	"github.com/vn4x/ewatv-playout-backend/internal/auth"
+	"github.com/vn4x/ewatv-playout-backend/internal/channels"
+	"github.com/vn4x/ewatv-playout-backend/internal/collections"
 	"github.com/vn4x/ewatv-playout-backend/internal/config"
 	"github.com/vn4x/ewatv-playout-backend/internal/database"
 	"github.com/vn4x/ewatv-playout-backend/internal/handlers"
 	"github.com/vn4x/ewatv-playout-backend/internal/library"
 	"github.com/vn4x/ewatv-playout-backend/internal/middleware"
+	"github.com/vn4x/ewatv-playout-backend/internal/playout"
+	"github.com/vn4x/ewatv-playout-backend/internal/schedule"
+	"github.com/vn4x/ewatv-playout-backend/internal/stream"
 )
 
 type Deps struct {
-	Config  *config.Config
-	Log     zerolog.Logger
-	DB      *database.DB
-	Redis   *database.Redis
-	Library *library.Service
+	Config      *config.Config
+	Log         zerolog.Logger
+	DB          *database.DB
+	Redis       *database.Redis
+	Library     *library.Service
+	Collections *collections.Service
+	Channels    *channels.Service
+	Schedule    *schedule.Service
+	Playout     *playout.Engine
 }
 
 func NewApp(deps Deps) *fiber.App {
@@ -64,11 +74,34 @@ func NewApp(deps Deps) *fiber.App {
 		})
 	})
 
-	if deps.Library != nil {
-		auth := middleware.SupabaseAuth(cfg.Auth)
-		videos := handlers.NewVideos(deps.Library)
-		admin := api.Group("", auth)
-		videos.Register(admin)
+	authRepo := auth.NewRepository(deps.DB.Pool)
+	authSvc := auth.NewService(authRepo, cfg.Auth)
+	authH := handlers.NewAuth(authSvc)
+	authH.Register(api)
+
+	jwtAuth := middleware.LocalJWT(cfg.Auth)
+	authH.RegisterProtected(api.Group("", jwtAuth))
+
+	if deps.Library != nil || deps.Collections != nil || deps.Channels != nil || deps.Schedule != nil {
+		admin := api.Group("", jwtAuth)
+		if deps.Library != nil {
+			handlers.NewVideos(deps.Library).Register(admin)
+		}
+		if deps.Collections != nil {
+			handlers.NewCollections(deps.Collections).Register(admin)
+		}
+		if deps.Channels != nil {
+			handlers.NewChannels(deps.Channels).Register(admin)
+		}
+		if deps.Schedule != nil {
+			handlers.NewSchedules(deps.Schedule).Register(admin)
+			handlers.NewAutopilot(deps.Schedule).Register(admin)
+		}
+	}
+
+	if deps.Playout != nil {
+		handlers.NewPlayout(deps.Playout).Register(api)
+		stream.NewHLS(deps.Playout).Register(app)
 	}
 
 	return app

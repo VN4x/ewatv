@@ -44,13 +44,12 @@ type CORSConfig struct {
 }
 
 type AuthConfig struct {
-	JWTSecret             string        `mapstructure:"jwt_secret"`
-	JWTIssuer             string        `mapstructure:"jwt_issuer"`
-	TokenTTL              time.Duration `mapstructure:"token_ttl"`
-	SupabaseURL           string        `mapstructure:"supabase_url"`
-	SupabaseJWTSecret     string        `mapstructure:"supabase_jwt_secret"`
-	SupabaseJWTSecretFile string        `mapstructure:"supabase_jwt_secret_file"`
-	RequireAuth           bool          `mapstructure:"require_auth"`
+	JWTSecret     string        `mapstructure:"jwt_secret"`
+	JWTSecretFile string        `mapstructure:"jwt_secret_file"`
+	JWTIssuer     string        `mapstructure:"jwt_issuer"`
+	TokenTTL      time.Duration `mapstructure:"token_ttl"`
+	BcryptCost    int           `mapstructure:"bcrypt_cost"`
+	RequireAuth   bool          `mapstructure:"require_auth"`
 }
 
 type IngestConfig struct {
@@ -90,11 +89,20 @@ func joinStorage(root, sub string) string {
 }
 
 type PlayoutConfig struct {
+	PublicBaseURL          string        `mapstructure:"public_base_url"`
 	Timezone               string        `mapstructure:"timezone"`
 	TickInterval           time.Duration `mapstructure:"tick_interval"`
 	ManifestWindowSegments int           `mapstructure:"manifest_window_segments"`
 	PrefetchNextItems      int           `mapstructure:"prefetch_next_items"`
 	MaxConcurrentPackJobs  int           `mapstructure:"max_concurrent_pack_jobs"`
+}
+
+func (p PlayoutConfig) HLSURL(slug string) string {
+	if p.PublicBaseURL == "" || slug == "" {
+		return ""
+	}
+	base := strings.TrimRight(p.PublicBaseURL, "/")
+	return base + "/hls/" + slug + "/index.m3u8"
 }
 
 type FFmpegConfig struct {
@@ -159,9 +167,14 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("logging.format", "json")
 	v.SetDefault("metrics.enabled", true)
 	v.SetDefault("metrics.path", "/metrics")
+	v.SetDefault("playout.public_base_url", "http://localhost:8090")
 	v.SetDefault("playout.timezone", "Europe/Helsinki")
 	v.SetDefault("playout.tick_interval", "500ms")
+	v.SetDefault("playout.manifest_window_segments", 12)
 	v.SetDefault("storage.root", "/data")
+	v.SetDefault("auth.jwt_issuer", "ewatv-playout")
+	v.SetDefault("auth.token_ttl", "24h")
+	v.SetDefault("auth.bcrypt_cost", 12)
 	v.SetDefault("auth.require_auth", true)
 	v.SetDefault("ingest.enabled", true)
 	v.SetDefault("ingest.poll_interval", "5s")

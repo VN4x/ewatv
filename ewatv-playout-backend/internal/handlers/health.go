@@ -9,7 +9,7 @@ import (
 	"github.com/vn4x/ewatv-playout-backend/internal/models"
 )
 
-const Version = "0.2.0-library-ingest"
+const Version = "0.3.0-playout-engine"
 
 type Health struct {
 	started time.Time

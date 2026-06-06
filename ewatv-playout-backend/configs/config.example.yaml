@@ -24,14 +24,12 @@ cors:
     - X-Request-ID
 
 auth:
-  jwt_secret: "change-me-in-production"
+  jwt_secret: "change-me-in-production"   # or EWATV_AUTH_JWT_SECRET
+  jwt_secret_file: ""                     # Podman: /run/secrets/ewatv_jwt_secret
   jwt_issuer: "ewatv-playout"
   token_ttl: 24h
-  # Validate tokens from hosted Supabase (frontend login)
-  supabase_url: "https://your-project.supabase.co"
-  supabase_jwt_secret: ""          # or set EWATV_AUTH_SUPABASE_JWT_SECRET
-  supabase_jwt_secret_file: ""     # Podman: /run/secrets/ewatv_jwt_secret
-  require_auth: true               # false only for local dev
+  bcrypt_cost: 12                         # optional; default 12
+  require_auth: true                      # false only for local dev
 
 ingest:
   enabled: true
@@ -58,6 +56,7 @@ storage:
   slate_path: "slate/black_2s.mp4"
 
 playout:
+  public_base_url: "http://localhost:8090"
   timezone: "Europe/Helsinki"
   tick_interval: 500ms
   manifest_window_segments: 12

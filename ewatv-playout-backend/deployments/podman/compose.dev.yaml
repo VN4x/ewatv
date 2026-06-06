@@ -14,6 +14,7 @@ services:
     volumes:
       - ewatv_pgdata_dev:/var/lib/postgresql/data:Z
       - ../../migrations/001_foundation.up.sql:/docker-entrypoint-initdb.d/001_foundation.sql:ro,Z
+      - ../../migrations/002_standalone_auth.up.sql:/docker-entrypoint-initdb.d/002_standalone_auth.sql:ro,Z
     ports:
       - "5433:5432"
     healthcheck:

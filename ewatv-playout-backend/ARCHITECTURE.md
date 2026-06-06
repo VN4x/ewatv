@@ -9,8 +9,8 @@ Self-hosted linear TV playout engine (Strimm replacement) optimized for **Hetzne
 | **24/7 stability** | Pre-segmented CMAF assets; playout = manifest rotation, not live transcode |
 | **Mobile-first HLS/DASH** | LL-HLS + DASH-IF CMAF; 2–4 ABR ladders only where needed |
 | **Multi-channel** | One playout goroutine per active channel; shared segment cache |
-| **Frontend reuse** | REST + WebSocket APIs mirroring existing `ewatv` Supabase contracts |
-| **Transferable** | Clean module boundaries; OpenAPI spec; no Supabase lock-in for playout plane |
+| **Self-contained** | All auth, library, schedules, playout in one Postgres — deploy anywhere |
+| **Frontend optional** | REST + HLS URLs; any hls.js client works; ewatv React app can switch to API client |
 
 ## System context
 
@@ -41,23 +41,15 @@ Self-hosted linear TV playout engine (Strimm replacement) optimized for **Hetzne
   /data/channels/{slug}/live/...
 ```
 
-## Integration with existing frontend
+## Integration (optional ewatv frontend)
 
-The frontend today uses **Supabase Postgres** as source of truth and **Mist** for HLS. Migration path:
+The backend is **fully functional without the ewatv frontend**. Any client can:
 
-### Phase A — Dual mode (recommended first ship)
+1. `POST /v1/auth/login` → JWT
+2. CRUD videos, channels, schedules via `/v1/*`
+3. Play `GET /hls/{slug}/index.m3u8` in VLC, hls.js, smart TV
 
-| Frontend call | Today (Mist) | New backend |
-|---------------|--------------|-------------|
-| `nowPlaying({ channelSlug })` | TanStack server fn → Supabase + `VITE_MIST_HLS_BASE` | Same shape; `hlsUrl` points to Go backend `/hls/{slug}/index.m3u8` |
-| Collections / Schedules CRUD | Supabase direct | **Keep Supabase** OR sync via webhook; backend reads schedule for playout |
-| Channel `playout_mode` | N/A | `hls_broadcast` → this backend; `client` → existing cloud path |
-
-Minimal frontend change: set `VITE_MIST_HLS_BASE=https://playout.example.com/hls` (or dedicated env `VITE_PLAYOUT_HLS_BASE`).
-
-### Phase B — Backend owns library + schedules
-
-Backend exposes OpenAPI-compatible endpoints; frontend switches from Supabase client to API client for admin. Auth: JWT validated against same user store (Supabase JWKS or shared secret during transition).
+To reuse the ewatv React UI: replace Supabase client calls with fetch to this API; set `VITE_PLAYOUT_HLS_BASE` to this server.
 
 ### `nowPlaying` contract (must preserve)
 
@@ -75,16 +67,17 @@ Backend exposes OpenAPI-compatible endpoints; frontend switches from Supabase cl
 }
 ```
 
-## Decision log (confirmed)
+## Decision log (confirmed — standalone)
 
 | # | Decision | Choice |
 |---|----------|--------|
-| 1 | Database | Standalone Postgres 16 on AX42; Adminer optional (`profile: admin`); hosted Supabase kept for frontend auth only |
-| 2 | Auth | Validate **Supabase JWT** (HS256, project JWT secret via Podman secret or Infisical) |
-| 3 | Ingest | Pull **`source_ref` HTTPS URL** → `/data/videos/{id}/source.mp4` → ffprobe → FFmpeg CMAF pack |
-| 4 | Containers | **Podman** compose + quadlets + `podman secret`; Infisical optional for teams |
+| 1 | Database | **Standalone Postgres 16 only** on AX42 — no hosted Supabase, no sync |
+| 2 | Auth | **Local users** (bcrypt + JWT issued by this backend) |
+| 3 | Ingest | Pull **`source_ref` URL** → CMAF pack on local disk |
+| 4 | Containers | **Podman** + quadlets + secrets (GNU) or Infisical |
+| 5 | Deploy target | Any machine — cloud-agnostic, self-contained |
 
-Local dev clone: `A:\001code\1 Cursor\ewatv\ewatv-playout-backend` — see `LOCAL_SYNC.md`.
+Local dev clone: `A:\001code\1 Cursor\ewatv\ewatv-playout-backend`
 
 ## Module map (6-agent workstream)
 

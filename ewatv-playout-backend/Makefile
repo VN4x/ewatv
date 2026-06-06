@@ -27,8 +27,7 @@ podman-dev:
 	podman compose -f deployments/podman/compose.dev.yaml up -d
 
 migrate:
-	psql "$${EWATV_DATABASE_URL:-postgres://ewatv:ewatv@localhost:5433/ewatv_playout?sslmode=disable}" \
-		-f migrations/001_foundation.up.sql
+	chmod +x scripts/migrate.sh && ./scripts/migrate.sh
 
 lint:
 	go vet ./...

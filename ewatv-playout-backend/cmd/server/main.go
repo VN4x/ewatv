@@ -9,11 +9,15 @@ import (
 
 	"github.com/rs/zerolog/log"
 
+	"github.com/vn4x/ewatv-playout-backend/internal/channels"
+	"github.com/vn4x/ewatv-playout-backend/internal/collections"
 	"github.com/vn4x/ewatv-playout-backend/internal/config"
 	"github.com/vn4x/ewatv-playout-backend/internal/database"
 	"github.com/vn4x/ewatv-playout-backend/internal/ingest"
 	"github.com/vn4x/ewatv-playout-backend/internal/library"
 	"github.com/vn4x/ewatv-playout-backend/internal/platform"
+	"github.com/vn4x/ewatv-playout-backend/internal/playout"
+	"github.com/vn4x/ewatv-playout-backend/internal/schedule"
 	"github.com/vn4x/ewatv-playout-backend/internal/server"
 )
 
@@ -42,20 +46,37 @@ func main() {
 	}
 	defer func() { _ = rdb.Close() }()
 
-	repo := library.NewRepository(db.Pool)
-	libSvc := library.NewService(repo)
+	libRepo := library.NewRepository(db.Pool)
+	libSvc := library.NewService(libRepo)
+
+	colRepo := collections.NewRepository(db.Pool)
+	colSvc := collections.NewService(colRepo)
+
+	chRepo := channels.NewRepository(db.Pool)
+	chSvc := channels.NewService(chRepo)
+
+	schedRepo := schedule.NewRepository(db.Pool)
+	schedSvc := schedule.NewService(schedRepo)
+
+	playoutRepo := playout.NewRepository(db.Pool)
+	engine := playout.NewEngine(playoutRepo, cfg, logger)
+	go engine.Run(ctx)
 
 	if cfg.Ingest.Enabled {
-		worker := ingest.NewWorker(repo, logger, cfg)
+		worker := ingest.NewWorker(libRepo, logger, cfg)
 		go worker.Run(ctx)
 	}
 
 	app := server.NewApp(server.Deps{
-		Config:  cfg,
-		Log:     logger,
-		DB:      db,
-		Redis:   rdb,
-		Library: libSvc,
+		Config:      cfg,
+		Log:         logger,
+		DB:          db,
+		Redis:       rdb,
+		Library:     libSvc,
+		Collections: colSvc,
+		Channels:    chSvc,
+		Schedule:    schedSvc,
+		Playout:     engine,
 	})
 
 	go func() {

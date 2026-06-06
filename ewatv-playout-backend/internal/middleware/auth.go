@@ -11,14 +11,14 @@ import (
 
 const UserLocalKey = "user"
 
-func SupabaseAuth(cfg config.AuthConfig) fiber.Handler {
+func LocalJWT(cfg config.AuthConfig) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		if !cfg.RequireAuth {
 			return c.Next()
 		}
-		if cfg.SupabaseJWTSecret == "" {
+		if cfg.JWTSecret == "" {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "supabase JWT secret not configured",
+				"error": "jwt secret not configured",
 			})
 		}
 
@@ -27,7 +27,7 @@ func SupabaseAuth(cfg config.AuthConfig) fiber.Handler {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "authorization required"})
 		}
 
-		user, err := auth.ParseSupabaseToken(header, cfg.SupabaseJWTSecret)
+		user, err := auth.ParseLocalToken(header, cfg)
 		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid token"})
 		}
@@ -40,14 +40,14 @@ func SupabaseAuth(cfg config.AuthConfig) fiber.Handler {
 // OptionalAuth attaches user when Bearer present; never blocks.
 func OptionalAuth(cfg config.AuthConfig) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		if cfg.SupabaseJWTSecret == "" {
+		if cfg.JWTSecret == "" {
 			return c.Next()
 		}
 		header := c.Get(fiber.HeaderAuthorization)
 		if header == "" || !strings.HasPrefix(header, "Bearer ") {
 			return c.Next()
 		}
-		if user, err := auth.ParseSupabaseToken(header, cfg.SupabaseJWTSecret); err == nil {
+		if user, err := auth.ParseLocalToken(header, cfg); err == nil {
 			c.Locals(UserLocalKey, user)
 		}
 		return c.Next()

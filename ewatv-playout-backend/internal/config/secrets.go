@@ -24,8 +24,8 @@ func ReadSecret(envKey string) string {
 
 // ApplySecretFiles overlays config from EWATV_* env and *_FILE mounts.
 func (c *Config) ApplySecretFiles() {
-	if v := ReadSecret("EWATV_AUTH_SUPABASE_JWT_SECRET"); v != "" {
-		c.Auth.SupabaseJWTSecret = v
+	if v := ReadSecret("EWATV_AUTH_JWT_SECRET"); v != "" {
+		c.Auth.JWTSecret = v
 	}
 	if v := ReadSecret("EWATV_DATABASE_URL"); v != "" {
 		c.Database.URL = v
@@ -36,9 +36,9 @@ func (c *Config) ApplySecretFiles() {
 	if v := os.Getenv("EWATV_STORAGE_ROOT"); v != "" {
 		c.Storage.Root = v
 	}
-	if c.Auth.SupabaseJWTSecret == "" && c.Auth.SupabaseJWTSecretFile != "" {
-		if b, err := os.ReadFile(c.Auth.SupabaseJWTSecretFile); err == nil {
-			c.Auth.SupabaseJWTSecret = strings.TrimSpace(string(b))
+	if c.Auth.JWTSecret == "" && c.Auth.JWTSecretFile != "" {
+		if b, err := os.ReadFile(c.Auth.JWTSecretFile); err == nil {
+			c.Auth.JWTSecret = strings.TrimSpace(string(b))
 		}
 	}
 }
