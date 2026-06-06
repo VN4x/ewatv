@@ -1,0 +1,72 @@
+server:
+  host: "0.0.0.0"
+  port: 8090
+  read_timeout: 30s
+  write_timeout: 30s
+  idle_timeout: 120s
+  shutdown_timeout: 15s
+  body_limit: 10485760 # 10 MiB
+
+cors:
+  allowed_origins:
+    - "http://localhost:8080"
+    - "http://localhost:5173"
+  allowed_methods:
+    - GET
+    - POST
+    - PUT
+    - PATCH
+    - DELETE
+    - OPTIONS
+  allowed_headers:
+    - Authorization
+    - Content-Type
+    - X-Request-ID
+
+auth:
+  jwt_secret: "change-me-in-production"
+  jwt_issuer: "ewatv-playout"
+  token_ttl: 24h
+
+database:
+  url: "postgres://ewatv:ewatv@localhost:5433/ewatv_playout?sslmode=disable"
+  max_conns: 25
+  min_conns: 4
+  max_conn_lifetime: 30m
+  max_conn_idle_time: 5m
+
+redis:
+  url: "redis://localhost:6379/0"
+  pool_size: 16
+
+storage:
+  root: "/data"
+  videos_dir: "videos"
+  segments_dir: "segments"
+  channels_dir: "channels"
+  slate_path: "slate/black_2s.mp4"
+
+playout:
+  timezone: "Europe/Helsinki"
+  tick_interval: 500ms
+  manifest_window_segments: 12
+  prefetch_next_items: 2
+  max_concurrent_pack_jobs: 2
+
+ffmpeg:
+  binary: "ffmpeg"
+  ffprobe: "ffprobe"
+  threads: 0
+
+logging:
+  level: "info"
+  format: "console" # console | json
+
+metrics:
+  enabled: true
+  path: "/metrics"
+
+rate_limit:
+  enabled: true
+  max: 200
+  expiration: 1m

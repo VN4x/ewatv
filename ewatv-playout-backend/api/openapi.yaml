@@ -1,0 +1,119 @@
+openapi: 3.1.0
+info:
+  title: EWATV Linear Playout API
+  version: 0.1.0
+  description: |
+    Self-hosted linear TV backend for ewatv frontend integration.
+    Foundation release: health + readiness only. CRUD and streaming routes follow in Phase 2–4.
+servers:
+  - url: http://localhost:8090
+    description: Local development
+paths:
+  /health:
+    get:
+      summary: Liveness probe
+      operationId: getHealth
+      tags: [System]
+      responses:
+        "200":
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /ready:
+    get:
+      summary: Readiness probe (Postgres + Redis)
+      operationId: getReady
+      tags: [System]
+      responses:
+        "200":
+          description: All dependencies healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: One or more dependencies unavailable
+  /v1/channels/{slug}/now-playing:
+    get:
+      summary: Current and next schedule item (ewatv nowPlaying compatible)
+      operationId: getNowPlaying
+      tags: [Playout]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Now playing metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NowPlaying"
+        "501":
+          description: Not implemented in foundation release
+  /hls/{slug}/index.m3u8:
+    get:
+      summary: Live HLS master/media playlist
+      operationId: getHLSManifest
+      tags: [Streaming]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: HLS manifest
+          content:
+            application/vnd.apple.mpegurl:
+              schema:
+                type: string
+        "501":
+          description: Not implemented in foundation release
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, version, uptime_sec]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        version:
+          type: string
+        uptime_sec:
+          type: number
+        checks:
+          type: object
+          additionalProperties:
+            type: string
+    NowPlaying:
+      type: object
+      description: Matches ewatv src/lib/api/playout.functions.ts NowPlayingResult
+      properties:
+        streamName:
+          type: string
+        hlsUrl:
+          type: string
+          format: uri
+        fallbackYoutubeUrl:
+          type: string
+          nullable: true
+        channelName:
+          type: string
+        channelSlug:
+          type: string
+        overlayLogoUrl:
+          type: string
+          nullable: true
+        current:
+          type: object
+          nullable: true
+        next:
+          type: object
+          nullable: true
