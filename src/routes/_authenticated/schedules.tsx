@@ -18,6 +18,20 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  isPlayoutBackend,
+  listChannels,
+  listCollections,
+  listVideos,
+  getSchedule,
+  saveScheduleToBackend,
+  runAutopilotBackend,
+  updateChannel,
+  updateChannelPlayoutSettings,
+  getPrevScheduleEnd,
+  createEmptySchedule,
+} from "@/lib/data";
+import { mergePlayoutIntoSettings } from "@/lib/channels/settings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -110,14 +124,12 @@ function SchedulesPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  const playout = isPlayoutBackend();
+
   const { data: channels = [] } = useQuery({
     queryKey: ["channels"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("channels")
-        .select("id,name,slug,settings")
-        .order("name");
-      if (error) throw error;
+      const data = await listChannels();
       return data as Channel[];
     },
   });
@@ -144,6 +156,20 @@ function SchedulesPage() {
     enabled: !!channelId && !!date,
     queryKey: ["schedule", channelId, date],
     queryFn: async () => {
+      if (playout && channelId) {
+        const view = await getSchedule(channelId, date);
+        if (!view?.schedule) return { schedule: null, items: [] as Item[] };
+        const mapped: Item[] = (view.items ?? []).map((r) => ({
+          id: r.id,
+          video_id: r.video_id ?? "",
+          title: (r.source_snapshot?.title as string) ?? "(video)",
+          duration_ms: r.duration_ms,
+          transition_ms: r.transition_ms,
+          source_snapshot: r.source_snapshot as Item["source_snapshot"],
+          persisted: true,
+        }));
+        return { schedule: view.schedule, items: mapped };
+      }
       const { data: sched, error } = await supabase
         .from("schedules")
         .select("id,autopilot")
@@ -204,32 +230,10 @@ function SchedulesPage() {
     });
   }
 
-  // Latest end time across this channel's schedule items (excludes current schedule).
   const { data: prevEnd } = useQuery({
     enabled: !!channelId,
-    queryKey: ["prev-end", channelId, loaded?.schedule?.id ?? null],
-    queryFn: async () => {
-      const { data: scheds, error } = await supabase
-        .from("schedules")
-        .select("id")
-        .eq("channel_id", channelId!);
-      if (error) throw error;
-      const ids = (scheds ?? [])
-        .map((s) => s.id)
-        .filter((id) => id !== loaded?.schedule?.id);
-      if (ids.length === 0) return null;
-      const { data: rows, error: e2 } = await supabase
-        .from("schedule_items")
-        .select("start_at,duration_ms,transition_ms")
-        .in("schedule_id", ids);
-      if (e2) throw e2;
-      let max = 0;
-      for (const r of rows ?? []) {
-        const t = new Date(r.start_at).getTime() + r.duration_ms + r.transition_ms;
-        if (t > max) max = t;
-      }
-      return max ? new Date(max).toISOString() : null;
-    },
+    queryKey: ["prev-end", channelId, loaded?.schedule?.id ?? null, playout ? "go" : "sb"],
+    queryFn: () => getPrevScheduleEnd(channelId!, loaded?.schedule?.id),
   });
 
   // Auto-prefill date + start time from previous schedule's end (unless user touched it).
@@ -244,6 +248,21 @@ function SchedulesPage() {
   const saveMut = useMutation({
     mutationFn: async () => {
       if (!channelId) throw new Error("Pick a channel");
+      const itemsPayload = computed.map((it) => ({
+        video_id: it.video_id,
+        duration_ms: it.duration_ms,
+        transition_ms: it.transition_ms,
+        start_at: it.start_at!,
+        source_snapshot: it.source_snapshot,
+      }));
+      if (playout) {
+        return saveScheduleToBackend(channelId, date, {
+          autopilot: channelSettings.autopilot_enabled,
+          existing_schedule_id: loaded?.schedule?.id,
+          items: itemsPayload,
+          recompute_start_at: false,
+        });
+      }
       return saveScheduleAndPush({
         data: {
           channelId,
@@ -262,7 +281,9 @@ function SchedulesPage() {
       });
     },
     onSuccess: (result) => {
-      if (result.pushed) {
+      if (playout) {
+        toast.success("Schedule saved to playout engine");
+      } else if (result.pushed) {
         toast.success("Schedule saved and pushed to Mist");
       } else if (result.pushError) {
         toast.error(`Saved, but Mist push failed: ${result.pushError}`);
@@ -283,12 +304,24 @@ function SchedulesPage() {
   const playoutToggleMut = useMutation({
     mutationFn: async (active: boolean) => {
       if (!channelId) throw new Error("Pick a channel");
+      if (playout) {
+        const settings = mergePlayoutIntoSettings(selectedChannel?.settings ?? null, {
+          playout_active: active,
+        });
+        return updateChannel(channelId, { playout_active: active, settings });
+      }
       return updateChannelPlayout({ data: { channelId, playoutActive: active } });
     },
     onSuccess: (_res, active) => {
       setPlayoutActive(active);
       toast.success(
-        active ? "Playout active — saves for today push to Mist" : "Playout paused",
+        playout
+          ? active
+            ? "Playout active — HLS live from Go engine"
+            : "Playout paused"
+          : active
+            ? "Playout active — saves for today push to Mist"
+            : "Playout paused",
       );
       qc.invalidateQueries({ queryKey: ["channels"] });
     },
@@ -299,10 +332,13 @@ function SchedulesPage() {
   const autopilotMut = useMutation({
     mutationFn: async () => {
       if (!channelId) throw new Error("Pick a channel");
+      if (playout) return runAutopilotBackend(channelId, { days: 7, from_date: date });
       return runAutopilotNow({ data: { channelId } });
     },
     onSuccess: (res) => {
-      const n = res.generated?.length ?? 0;
+      const n = playout
+        ? (res as { generated?: unknown[] }).generated?.length ?? 0
+        : (res as { generated?: unknown[] }).generated?.length ?? 0;
       toast.success(`Weekly refresh: ${n} day(s) generated`);
       qc.invalidateQueries({ queryKey: ["schedule", channelId, date] });
       qc.invalidateQueries({ queryKey: ["channels"] });
@@ -314,6 +350,13 @@ function SchedulesPage() {
   const autopilotToggleMut = useMutation({
     mutationFn: async (enabled: boolean) => {
       if (!channelId) throw new Error("Pick a channel");
+      if (playout) {
+        return updateChannelPlayoutSettings(
+          channelId,
+          selectedChannel?.settings ?? null,
+          { autopilot_enabled: enabled },
+        );
+      }
       return updateChannelAutopilot({
         data: { channelId, autopilotEnabled: enabled },
       });
@@ -341,9 +384,6 @@ function SchedulesPage() {
   const createMut = useMutation({
     mutationFn: async () => {
       if (!channelId) throw new Error("Pick a channel");
-      const { data: u } = await supabase.auth.getUser();
-      const uid = u.user?.id;
-      if (!uid) throw new Error("Not authenticated");
       let useDate = date;
       let useStart = startTime;
       if (prevEnd) {
@@ -354,35 +394,19 @@ function SchedulesPage() {
         setStartTime(useStart);
         setStartTimeTouched(false);
       }
-      const { data: existing } = await supabase
-        .from("schedules")
-        .select("id")
-        .eq("channel_id", channelId)
-        .eq("schedule_date", useDate)
-        .maybeSingle();
-      if (existing) {
-        toast.message("A schedule already exists for this date — loaded it");
-        return existing.id;
-      }
-      const { data: ins, error } = await supabase
-        .from("schedules")
-        .insert({
-          channel_id: channelId,
-          schedule_date: useDate,
-          autopilot: false,
-          owner_id: uid,
-        })
-        .select("id")
-        .single();
-      if (error) throw error;
-      return ins.id;
+      const { id, alreadyExisted } = await createEmptySchedule(channelId, useDate);
+      return { id, alreadyExisted };
     },
-    onSuccess: () => {
-      toast.success("Schedule created — add videos to fill up to 24h");
+    onSuccess: ({ alreadyExisted }) => {
+      if (alreadyExisted) {
+        toast.message("A schedule already exists for this date — loaded it");
+      } else {
+        toast.success("Schedule created — add videos to fill up to 24h");
+      }
       qc.invalidateQueries({ queryKey: ["schedule", channelId, date] });
       qc.invalidateQueries({ queryKey: ["prev-end", channelId] });
     },
-    onError: (e: any) => toast.error(e.message ?? "Failed"),
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
   function addVideos(videos: Video[]) {
@@ -482,8 +506,16 @@ function SchedulesPage() {
           </div>
           <p className="max-w-md text-xs text-muted-foreground">
             Stays on until you turn off. Fills empty days for the rolling week
-            (today + 6). <strong>Today&apos;s</strong> lineup is pushed to Mist
-            when Playout active; each other day goes live on its calendar date.
+            (today + 6).{" "}
+            {playout ? (
+              <strong>Today&apos;s</strong>
+            ) : (
+              <>
+                <strong>Today&apos;s</strong> lineup is pushed to Mist when Playout active; each
+                other day goes live on its calendar date.
+              </>
+            )}{" "}
+            {playout && "The Go engine serves today automatically — no nightly push."}
           </p>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -507,7 +539,7 @@ function SchedulesPage() {
             <CalendarPlus className="mr-2 h-4 w-4" />
             Create
           </Button>
-          {loaded?.schedule?.id && playoutActive && (
+          {loaded?.schedule?.id && playoutActive && !playout && (
             <Button
               type="button"
               variant="outline"
@@ -534,7 +566,7 @@ function SchedulesPage() {
         </div>
       </div>
 
-      {channelSettings.last_mist_push_at && (
+      {!playout && channelSettings.last_mist_push_at && (
         <p className="text-xs text-muted-foreground">
           Last Mist push: {format(parseISO(channelSettings.last_mist_push_at), "MMM d HH:mm")}
           {channelSettings.last_mist_push_error && (
@@ -555,7 +587,7 @@ function SchedulesPage() {
                 <Plus className="mr-2 h-4 w-4" /> Add videos
               </Button>
             </DialogTrigger>
-            <VideoPickerDialog onAdd={addVideos} />
+            <VideoPickerDialog onAdd={addVideos} playout={playout} />
           </Dialog>
         </div>
 
@@ -630,34 +662,41 @@ function SortableRow({
   );
 }
 
-function VideoPickerDialog({ onAdd }: { onAdd: (v: Video[]) => void }) {
+function VideoPickerDialog({
+  onAdd,
+  playout,
+}: {
+  onAdd: (v: Video[]) => void;
+  playout: boolean;
+}) {
   const [search, setSearch] = useState("");
   const [collectionId, setCollectionId] = useState<string>("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
 
   const { data: collections = [] } = useQuery({
-    queryKey: ["collections-picker"],
+    queryKey: ["collections-picker", playout ? "go" : "sb"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("collections")
-        .select("id,name")
-        .order("name");
-      if (error) throw error;
-      return data as { id: string; name: string }[];
+      const data = await listCollections();
+      return data.map((c) => ({ id: c.id, name: c.name }));
     },
   });
   const { data: videos = [] } = useQuery({
-    queryKey: ["videos-picker", collectionId, search],
+    queryKey: ["videos-picker", collectionId, search, playout ? "go" : "sb"],
     queryFn: async () => {
-      let q = supabase
-        .from("videos")
-        .select("id,title,length_sec,source_type,source_ref,collection_id")
-        .order("title");
-      if (collectionId) q = q.eq("collection_id", collectionId);
-      if (search.trim()) q = q.ilike("title", `%${search}%`);
-      const { data, error } = await q;
-      if (error) throw error;
-      return data as Video[];
+      const data = await listVideos({
+        collectionId: collectionId || null,
+        search: search.trim() || undefined,
+      });
+      return data
+        .map((v) => ({
+          id: v.id,
+          title: v.title,
+          length_sec: v.length_sec,
+          source_type: v.source_type,
+          source_ref: v.source_ref,
+          collection_id: v.collection_id,
+        }))
+        .sort((a, b) => a.title.localeCompare(b.title)) as Video[];
     },
   });
 

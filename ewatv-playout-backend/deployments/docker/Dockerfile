@@ -1,0 +1,33 @@
+# Build stage
+FROM golang:1.22-alpine AS builder
+
+RUN apk add --no-cache git ca-certificates
+
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/ewatv-playout ./cmd/server
+
+# Runtime stage
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates ffmpeg tzdata \
+    && adduser -D -u 10001 playout
+
+WORKDIR /app
+COPY --from=builder /out/ewatv-playout /usr/local/bin/ewatv-playout
+COPY configs/config.example.yaml /app/configs/config.example.yaml
+COPY api/openapi.yaml /app/api/openapi.yaml
+
+RUN mkdir -p /data && chown playout:playout /data
+
+USER playout
+EXPOSE 8090
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:8090/health || exit 1
+
+ENTRYPOINT ["/usr/local/bin/ewatv-playout"]
+CMD ["-config", "/app/configs/config.example.yaml"]

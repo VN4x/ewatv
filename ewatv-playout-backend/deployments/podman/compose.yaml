@@ -1,0 +1,100 @@
+# Podman Compose — ewatv playout stack (memory-efficient alpine images)
+# Usage: podman compose -f deployments/podman/compose.yaml up -d
+
+name: ewatv-playout
+
+x-playout-env: &playout-env
+  EWATV_DATABASE_URL: postgres://ewatv@postgres:5432/ewatv_playout?sslmode=disable
+  EWATV_REDIS_URL: redis://redis:6379/0
+  EWATV_LOGGING_FORMAT: json
+  EWATV_STORAGE_ROOT: /data
+
+services:
+  postgres:
+    image: docker.io/library/postgres:16-alpine
+    container_name: ewatv-postgres
+    environment:
+      POSTGRES_USER: ewatv
+      POSTGRES_DB: ewatv_playout
+      POSTGRES_PASSWORD_FILE: /run/secrets/ewatv_db_password
+    secrets:
+      - ewatv_db_password
+    volumes:
+      - ewatv_pgdata:/var/lib/postgresql/data:Z
+      - ../../migrations/001_foundation.up.sql:/docker-entrypoint-initdb.d/001_foundation.sql:ro,Z
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ewatv -d ewatv_playout"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    # ~64MB shared_buffers is set via command for AX42 tuning
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - max_connections=100
+      - -c
+      - work_mem=4MB
+
+  redis:
+    image: docker.io/library/redis:7-alpine
+    container_name: ewatv-redis
+    command: redis-server --save "" --appendonly no --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  playout:
+    build:
+      context: ../..
+      dockerfile: deployments/podman/Containerfile
+    container_name: ewatv-playout
+    environment:
+      <<: *playout-env
+      EWATV_DATABASE_URL_FILE: /run/secrets/ewatv_database_url
+      EWATV_AUTH_SUPABASE_JWT_SECRET_FILE: /run/secrets/ewatv_jwt_secret
+    secrets:
+      - ewatv_database_url
+      - ewatv_jwt_secret
+    volumes:
+      - ewatv_playout_data:/data:Z
+    ports:
+      - "8090:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  adminer:
+    profiles: ["admin"]
+    image: docker.io/library/adminer:4
+    container_name: ewatv-adminer
+    ports:
+      - "8081:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      - postgres
+
+secrets:
+  ewatv_db_password:
+    external: true
+  ewatv_jwt_secret:
+    external: true
+  ewatv_database_url:
+    external: true
+
+volumes:
+  ewatv_pgdata:
+  ewatv_playout_data:

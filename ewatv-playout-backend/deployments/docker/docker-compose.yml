@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ewatv
+      POSTGRES_PASSWORD: ewatv
+      POSTGRES_DB: ewatv_playout
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./migrations/001_foundation.up.sql:/docker-entrypoint-initdb.d/001_foundation.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ewatv -d ewatv_playout"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  playout:
+    build:
+      context: .
+      dockerfile: deployments/docker/Dockerfile
+    ports:
+      - "8090:8090"
+    environment:
+      EWATV_DATABASE_URL: postgres://ewatv:ewatv@postgres:5432/ewatv_playout?sslmode=disable
+      EWATV_REDIS_URL: redis://redis:6379/0
+      EWATV_AUTH_JWT_SECRET: dev-secret-change-me
+      EWATV_LOGGING_FORMAT: json
+    volumes:
+      - playout_data:/data
+      - ./configs/config.example.yaml:/app/configs/config.yaml:ro
+    command: ["-config", "/app/configs/config.yaml"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  playout_data:
