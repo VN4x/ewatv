@@ -3,6 +3,8 @@ import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bookmark, ChevronDown, Chevr
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
+import { isPlayoutBackend } from "@/lib/playout-backend/config";
+import { readOverlayDataUrl } from "@/lib/playout-backend/upload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -333,12 +335,18 @@ function OverlayDetailEditor({
   const [uploading, setUploading] = useState(false);
 
   async function uploadFile(file: File) {
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Max 5 MB");
-      return;
-    }
     setUploading(true);
     try {
+      if (isPlayoutBackend()) {
+        const dataUrl = await readOverlayDataUrl(file);
+        onChange({ url: dataUrl });
+        toast.success("Image ready — click Save to apply");
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("Max 5 MB");
+        return;
+      }
       const ext = file.name.split(".").pop()?.toLowerCase() || "png";
       const path = `${channelId}/${Date.now()}-${overlay.id.slice(0, 8)}.${ext}`;
       const { error } = await supabase.storage
@@ -348,8 +356,8 @@ function OverlayDetailEditor({
       const { data } = supabase.storage.from("channel-logos").getPublicUrl(path);
       onChange({ url: data.publicUrl });
       toast.success("Uploaded — click Save to apply");
-    } catch (e: any) {
-      toast.error(e.message ?? "Upload failed");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setUploading(false);
     }

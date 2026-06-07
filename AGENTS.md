@@ -57,6 +57,19 @@ Schema lives under `supabase/migrations/`. There is `supabase/config.toml` but n
 - **Mist** has a single 24/7 HLS URL — it plays **today's** `.pls` only (not all 7 days at once).
 - **Today:** pushed on save, weekly run, and nightly cron when `playout_active`.
 - **Future days:** stored in DB; auto-pushed to Mist when that date becomes today (cron).
+### Documentation index
+
+Operator and evaluation docs live in [`docs/`](../docs/):
+
+| File | Purpose |
+|------|---------|
+| [quickstart.md](../docs/quickstart.md) | First channel on air |
+| [usermanual.md](../docs/usermanual.md) | End-user workflows & data flow |
+| [test-report.md](../docs/test-report.md) | Automated + manual QA |
+| [automate.md](../docs/automate.md) | Scheduling automation & agentic AI |
+| [analytics.md](../docs/analytics.md) | Viewer metrics evaluation |
+
+Project overview: [README.md](../README.md).
 ### Daily Mist push @ 04:00
 
 - Cron **04:00 or earlier** in `AUTOPILOT_TIMEZONE` (default `Europe/Helsinki`): `deploy/cron/README.md`.
