@@ -187,6 +187,7 @@ function PlayoutPage() {
         <LinearPlayer
           ref={playerRef}
           hlsUrl={now?.hlsUrl ?? null}
+          channelSlug={selectedChannel?.slug}
           fallbackYoutubeUrl={now?.fallbackYoutubeUrl ?? null}
           className="absolute inset-0 h-full w-full"
           onError={(e) => toast.error(e)}

@@ -27,6 +27,7 @@ function EmbedPage() {
       <LinearPlayer
         ref={playerRef}
         hlsUrl={now?.hlsUrl ?? null}
+        channelSlug={channelSlug}
         fallbackYoutubeUrl={now?.fallbackYoutubeUrl ?? null}
         className="absolute inset-0 h-full w-full"
         muted

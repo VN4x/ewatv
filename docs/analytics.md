@@ -13,13 +13,13 @@ EWATV today has **strong playout foundations** but **no audience analytics produ
 
 | Capability | Status |
 |------------|--------|
-| Concurrent viewers | ❌ Not tracked |
-| Watch time / minutes | ❌ |
-| Geography / region | ❌ |
-| Time-of-day / day-of-week graphs | ❌ |
-| As-run (what actually aired) | ⚠️ Live cursor only (`playout_state`) |
+| Concurrent viewers | ✅ Live API + dashboard |
+| Watch time / minutes | ✅ Session heartbeats |
+| Geography / region | ✅ CF-IPCountry header (when present) |
+| Time-of-day / day-of-week graphs | ✅ `/analytics` UI |
+| As-run (what actually aired) | ✅ Engine + API |
 | EPG (planned grid) | ⚠️ Data in DB, no grid API |
-| Ops metrics (Prometheus) | ⚠️ Default Go metrics only |
+| Ops metrics (Prometheus custom) | ⚠️ Default Go metrics only |
 
 **Recommendation:** Build a **Phase 1 ops + audience MVP** on Go backend + Postgres, fronted by **Grafana** (ops) and a **React analytics page** (business users).
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
+	"github.com/vn4x/ewatv-playout-backend/internal/analytics"
 	"github.com/vn4x/ewatv-playout-backend/internal/channels"
 	"github.com/vn4x/ewatv-playout-backend/internal/collections"
 	"github.com/vn4x/ewatv-playout-backend/internal/config"
@@ -60,6 +61,11 @@ func main() {
 
 	playoutRepo := playout.NewRepository(db.Pool)
 	engine := playout.NewEngine(playoutRepo, cfg, logger)
+
+	analyticsRepo := analytics.NewRepository(db.Pool)
+	analyticsSvc := analytics.NewService(analyticsRepo)
+	engine.SetAsRunRecorder(analytics.NewAsRunRecorder(analyticsRepo, logger))
+
 	go engine.Run(ctx)
 
 	if cfg.Ingest.Enabled {
@@ -77,6 +83,7 @@ func main() {
 		Channels:    chSvc,
 		Schedule:    schedSvc,
 		Playout:     engine,
+		Analytics:   analyticsSvc,
 	})
 
 	go func() {

@@ -143,4 +143,83 @@ export const playoutApi = {
 
   nowPlaying: (slug: string) =>
     playoutFetch<Record<string, unknown>>(`/v1/channels/${slug}/now-playing`, { auth: false }),
+
+  sessionStart: (body: { session_id: string; channel_slug: string }) =>
+    playoutFetch<void>("/v1/events/session-start", { auth: false, body }),
+
+  sessionHeartbeat: (body: { session_id: string; watch_ms?: number }) =>
+    playoutFetch<void>("/v1/events/heartbeat", { auth: false, body }),
+
+  sessionEnd: (body: { session_id: string; watch_ms?: number }) =>
+    playoutFetch<void>("/v1/events/session-end", { auth: false, body }),
+
+  analyticsLive: () =>
+    playoutFetch<{ channels: LiveChannel[]; total_viewers: number }>("/v1/analytics/live"),
+
+  analyticsSummary: (params?: { channel?: string; from?: string; to?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.channel) q.set("channel", params.channel);
+    if (params?.from) q.set("from", params.from);
+    if (params?.to) q.set("to", params.to);
+    const qs = q.toString();
+    return playoutFetch<AnalyticsSummary>(`/v1/analytics/summary${qs ? `?${qs}` : ""}`);
+  },
+
+  analyticsByHour: (params?: { channel?: string; from?: string; to?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.channel) q.set("channel", params.channel);
+    if (params?.from) q.set("from", params.from);
+    if (params?.to) q.set("to", params.to);
+    const qs = q.toString();
+    return playoutFetch<{ points: HourlyPoint[] }>(`/v1/analytics/by-hour${qs ? `?${qs}` : ""}`);
+  },
+
+  analyticsByDow: (params?: { channel?: string; from?: string; to?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.channel) q.set("channel", params.channel);
+    if (params?.from) q.set("from", params.from);
+    if (params?.to) q.set("to", params.to);
+    const qs = q.toString();
+    return playoutFetch<{ points: DowPoint[] }>(`/v1/analytics/by-dow${qs ? `?${qs}` : ""}`);
+  },
+
+  analyticsByCountry: (params?: { channel?: string; from?: string; to?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.channel) q.set("channel", params.channel);
+    if (params?.from) q.set("from", params.from);
+    if (params?.to) q.set("to", params.to);
+    const qs = q.toString();
+    return playoutFetch<{ points: GeoPoint[] }>(`/v1/analytics/by-country${qs ? `?${qs}` : ""}`);
+  },
+};
+
+export type LiveChannel = {
+  channel_id: string;
+  slug: string;
+  name: string;
+  viewers: number;
+};
+
+export type AnalyticsSummary = {
+  unique_sessions: number;
+  total_watch_ms: number;
+  peak_concurrent: number;
+};
+
+export type HourlyPoint = {
+  hour: string;
+  sessions: number;
+  total_watch_ms: number;
+};
+
+export type DowPoint = {
+  day_of_week: number;
+  total_watch_ms: number;
+  sessions: number;
+};
+
+export type GeoPoint = {
+  country_code: string;
+  sessions: number;
+  total_watch_ms: number;
 };

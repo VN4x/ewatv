@@ -7,6 +7,7 @@ import (
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 
 	"github.com/vn4x/ewatv-playout-backend/internal/auth"
+	"github.com/vn4x/ewatv-playout-backend/internal/analytics"
 	"github.com/vn4x/ewatv-playout-backend/internal/channels"
 	"github.com/vn4x/ewatv-playout-backend/internal/collections"
 	"github.com/vn4x/ewatv-playout-backend/internal/config"
@@ -29,6 +30,7 @@ type Deps struct {
 	Channels    *channels.Service
 	Schedule    *schedule.Service
 	Playout     *playout.Engine
+	Analytics   *analytics.Service
 }
 
 func NewApp(deps Deps) *fiber.App {
@@ -102,6 +104,11 @@ func NewApp(deps Deps) *fiber.App {
 	if deps.Playout != nil {
 		handlers.NewPlayout(deps.Playout).Register(api)
 		stream.NewHLS(deps.Playout).Register(app)
+	}
+
+	if deps.Analytics != nil {
+		handlers.NewEvents(deps.Analytics).Register(api)
+		handlers.NewAnalytics(deps.Analytics).Register(api.Group("", jwtAuth))
 	}
 
 	return app

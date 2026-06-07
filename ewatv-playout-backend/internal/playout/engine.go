@@ -11,6 +11,7 @@ import (
 
 	"github.com/vn4x/ewatv-playout-backend/internal/config"
 	"github.com/vn4x/ewatv-playout-backend/internal/ingest"
+	"github.com/vn4x/ewatv-playout-backend/internal/analytics"
 	"github.com/vn4x/ewatv-playout-backend/internal/models"
 )
 
@@ -29,9 +30,10 @@ type channelRuntime struct {
 }
 
 type Engine struct {
-	repo *Repository
-	cfg  *config.Config
-	log  zerolog.Logger
+	repo   *Repository
+	cfg    *config.Config
+	log    zerolog.Logger
+	asRun  *analytics.AsRunRecorder
 
 	mu       sync.RWMutex
 	channels map[uuid.UUID]*channelRuntime
@@ -44,6 +46,11 @@ func NewEngine(repo *Repository, cfg *config.Config, log zerolog.Logger) *Engine
 		log:      log.With().Str("component", "playout-engine").Logger(),
 		channels: make(map[uuid.UUID]*channelRuntime),
 	}
+}
+
+// SetAsRunRecorder attaches an optional as-run writer (analytics Phase 1).
+func (e *Engine) SetAsRunRecorder(r *analytics.AsRunRecorder) {
+	e.asRun = r
 }
 
 func (e *Engine) Run(ctx context.Context) {
@@ -208,6 +215,23 @@ func (e *Engine) tick(ctx context.Context, channelID uuid.UUID) error {
 	}
 	if err := e.repo.UpsertPlayoutState(ctx, ch.ID, schedDatePtr, itemID, offsetMs, masterETag); err != nil {
 		e.log.Warn().Err(err).Str("slug", ch.Slug).Msg("update playout_state")
+	}
+
+	if e.asRun != nil && itemID != nil && startIdx >= 0 && startIdx < len(items) {
+		iv := items[startIdx]
+		var vid *uuid.UUID
+		title := ""
+		isGap := false
+		if pos, found := FindPosition(items, at); found && (pos.InGap || pos.InTransition) {
+			isGap = true
+			title = "Intermission"
+		} else if iv.Video != nil {
+			vid = &iv.Video.ID
+			title = iv.Video.Title
+		} else if iv.Item.SourceSnap.Title != "" {
+			title = iv.Item.SourceSnap.Title
+		}
+		e.asRun.OnAirItem(ctx, ch.ID, itemID, vid, title, isGap, at)
 	}
 
 	e.mu.Lock()

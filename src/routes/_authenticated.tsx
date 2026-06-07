@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { isPlayoutBackend } from "@/lib/playout-backend/config";
 import { isLoggedIn, clearSession } from "@/lib/playout-backend/auth-store";
 import { Button } from "@/components/ui/button";
-import { Tv, Library, Calendar, MonitorPlay, LogOut, Settings } from "lucide-react";
+import { Tv, Library, Calendar, MonitorPlay, LogOut, Settings, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
@@ -66,6 +66,7 @@ function AuthenticatedLayout() {
     { to: "/collections", label: "Collections", icon: Library },
     { to: "/schedules", label: "Schedules", icon: Calendar },
     { to: "/playout", label: "Playout", icon: MonitorPlay },
+    ...(playout ? [{ to: "/analytics", label: "Analytics", icon: BarChart3 }] : []),
     { to: "/settings", label: "Settings", icon: Settings },
   ];
 

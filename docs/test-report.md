@@ -14,6 +14,8 @@
 | Go backend unit tests | **3 packages pass** | Auth, channel settings, HLS manifest |
 | Production build (`npm run build`) | **Pass** | Client + SSR bundle |
 | Go compile (`go build ./cmd/server`) | **Pass** (implicit via `go test`) | — |
+| Go compile | **Pass** |
+| Analytics migration | `003_analytics.up.sql` — apply with `make migrate` |
 | E2E browser / Playwright | **Not run** | No E2E harness in repo yet |
 | Manual HLS playback | **Not run** | Requires live Postgres + ingest on VM |
 

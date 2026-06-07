@@ -1,5 +1,6 @@
 import Hls from "hls.js";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useViewerSession } from "@/hooks/useViewerSession";
 
 export type LinearPlayerHandle = {
   video: HTMLVideoElement | null;
@@ -8,6 +9,7 @@ export type LinearPlayerHandle = {
 
 type Props = {
   hlsUrl: string | null;
+  channelSlug?: string;
   fallbackYoutubeUrl?: string | null;
   className?: string;
   onError?: (err: string) => void;
@@ -15,13 +17,15 @@ type Props = {
 };
 
 export const LinearPlayer = forwardRef<LinearPlayerHandle, Props>(function LinearPlayer(
-  { hlsUrl, fallbackYoutubeUrl, className, onError, muted = true },
+  { hlsUrl, channelSlug, fallbackYoutubeUrl, className, onError, muted = true },
   ref,
 ) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const [errored, setErrored] = useState(false);
   const [loadKey, setLoadKey] = useState(0);
+
+  useViewerSession(channelSlug);
 
   useImperativeHandle(ref, () => ({
     video: videoRef.current,
