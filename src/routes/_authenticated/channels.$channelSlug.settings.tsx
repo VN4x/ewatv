@@ -5,7 +5,15 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { ArrowLeft, Copy, Trash2 } from "lucide-react";
 
-import { supabase } from "@/integrations/supabase/client";
+import {
+  isPlayoutBackend,
+  getChannelBySlug,
+  createChannel,
+  deleteChannel,
+  saveChannelSettings,
+  isSlugTaken,
+  runAutopilotBackend,
+} from "@/lib/data";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,18 +69,14 @@ function ChannelSettingsPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const isNew = channelSlug === "new";
+  const playout = isPlayoutBackend();
 
   const { data: channel, isLoading } = useQuery({
     enabled: !isNew,
     queryKey: ["channel-by-slug", channelSlug],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("channels")
-        .select("id,name,slug,overlay_logo_url,fallback_youtube_url,settings")
-        .eq("slug", channelSlug)
-        .maybeSingle();
-      if (error) throw error;
-      return (data as ChannelRow | null) ?? null;
+      const data = await getChannelBySlug(channelSlug);
+      return data as ChannelRow | null;
     },
   });
 
@@ -90,7 +94,7 @@ function ChannelSettingsPage() {
       </div>
     );
 
-  return <EditChannelView channel={channel} onDeleted={() => navigate({ to: "/schedules" })} qc={qc} />;
+  return <EditChannelView channel={channel} onDeleted={() => navigate({ to: "/schedules" })} qc={qc} playoutMode={playout} />;
 }
 
 function CreateChannelView() {
@@ -106,22 +110,8 @@ function CreateChannelView() {
 
   const createMut = useMutation({
     mutationFn: async () => {
-      const { data: u } = await supabase.auth.getUser();
-      const uid = u.user?.id;
-      if (!uid) throw new Error("Not authenticated");
-      const { data: dup } = await supabase
-        .from("channels")
-        .select("id")
-        .eq("slug", slug)
-        .maybeSingle();
-      if (dup) throw new Error("Slug already in use");
-      const { data, error } = await supabase
-        .from("channels")
-        .insert({ name, slug, owner_id: uid })
-        .select("slug")
-        .single();
-      if (error) throw error;
-      return data;
+      if (await isSlugTaken(slug)) throw new Error("Slug already in use");
+      return createChannel({ name, slug });
     },
     onSuccess: (row) => {
       toast.success(`Channel "${name}" created`);
@@ -189,10 +179,12 @@ function EditChannelView({
   channel,
   onDeleted,
   qc,
+  playoutMode,
 }: {
   channel: ChannelRow;
   onDeleted: () => void;
   qc: ReturnType<typeof useQueryClient>;
+  playoutMode: boolean;
 }) {
   const navigate = useNavigate();
   const playout = useMemo(() => parseChannelPlayoutSettings(channel.settings), [channel.settings]);
@@ -228,14 +220,8 @@ function EditChannelView({
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      if (slug !== channel.slug) {
-        const { data: dup } = await supabase
-          .from("channels")
-          .select("id")
-          .eq("slug", slug)
-          .neq("id", channel.id)
-          .maybeSingle();
-        if (dup) throw new Error("Slug already in use by another channel");
+      if (await isSlugTaken(slug, channel.id)) {
+        throw new Error("Slug already in use by another channel");
       }
       const newSettings = mergePlayoutIntoSettings(channel.settings, {
         transition_ms: Math.max(0, Math.min(60000, Math.round(gapSec * 1000))),
@@ -243,20 +229,14 @@ function EditChannelView({
         overlays,
         overlay_presets: presets,
       });
-      // Keep legacy single-logo column in sync with the first enabled overlay so older
-      // consumers and queries that read overlay_logo_url still get something useful.
       const firstOverlay = overlays.find((o) => o.enabled && o.url) ?? overlays[0] ?? null;
-      const { error } = await supabase
-        .from("channels")
-        .update({
-          name,
-          slug,
-          overlay_logo_url: firstOverlay?.url || null,
-          fallback_youtube_url: fallback || null,
-          settings: newSettings,
-        })
-        .eq("id", channel.id);
-      if (error) throw error;
+      await saveChannelSettings(channel.id, {
+        name,
+        slug,
+        overlay_logo_url: firstOverlay?.url || null,
+        fallback_youtube_url: fallback || null,
+        settings: newSettings,
+      });
       return slug;
     },
     onSuccess: (newSlug) => {
@@ -271,22 +251,7 @@ function EditChannelView({
   });
 
   const deleteMut = useMutation({
-    mutationFn: async () => {
-      const { data: scheds, error: e1 } = await supabase
-        .from("schedules")
-        .select("id")
-        .eq("channel_id", channel.id);
-      if (e1) throw e1;
-      const ids = (scheds ?? []).map((s) => s.id);
-      if (ids.length > 0) {
-        const { error: e2 } = await supabase.from("schedule_items").delete().in("schedule_id", ids);
-        if (e2) throw e2;
-        const { error: e3 } = await supabase.from("schedules").delete().in("id", ids);
-        if (e3) throw e3;
-      }
-      const { error } = await supabase.from("channels").delete().eq("id", channel.id);
-      if (error) throw error;
-    },
+    mutationFn: async () => deleteChannel(channel.id),
     onSuccess: () => {
       toast.success("Channel deleted");
       qc.invalidateQueries({ queryKey: ["channels"] });
@@ -296,10 +261,21 @@ function EditChannelView({
   });
 
   const updateNowMut = useMutation({
-    mutationFn: async () => runAutopilotNow({ data: { channelId: channel.id } }),
-    onSuccess: (res: any) => {
+    mutationFn: async () => {
+      if (playoutMode) return runAutopilotBackend(channel.id, { days: 7 });
+      return runAutopilotNow({ data: { channelId: channel.id } });
+    },
+    onSuccess: (res: { generated?: unknown[] }) => {
       const generated = res?.generated?.length ?? 0;
-      toast.success(generated > 0 ? `Refreshed ${generated} day(s) and pushed today` : "Pushed today's playlist");
+      toast.success(
+        playoutMode
+          ? generated > 0
+            ? `Refreshed ${generated} day(s) in playout engine`
+            : "Autopilot run complete"
+          : generated > 0
+            ? `Refreshed ${generated} day(s) and pushed today`
+            : "Pushed today's playlist",
+      );
       qc.invalidateQueries({ queryKey: ["channel-by-slug"] });
     },
     onError: (e: any) => toast.error(e.message ?? "Update failed"),
@@ -432,34 +408,37 @@ function EditChannelView({
 
       <Card>
         <CardHeader>
-          <CardTitle>Daily playlist update</CardTitle>
+          <CardTitle>{playoutMode ? "Weekly autopilot" : "Daily playlist update"}</CardTitle>
           <CardDescription>
-            Hour-of-day (autopilot timezone) when the next day's playlist is pushed to the live
-            stream. Applies until you change it. Use <em>Update now</em> after manual edits.
+            {playoutMode
+              ? "Regenerate empty days in the 7-day horizon. The Go engine reloads today's schedule automatically at midnight."
+              : "Hour-of-day (autopilot timezone) when the next day's playlist is pushed to the live stream. Applies until you change it. Use Update now after manual edits."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="space-y-1.5">
-            <Label>Update hour (0–23)</Label>
-            <Input
-              type="number"
-              min={0}
-              max={23}
-              value={pushHour}
-              onChange={(e) => setPushHour(Math.max(0, Math.min(23, Math.floor(Number(e.target.value) || 0))))}
-              className="w-32"
-            />
-            <p className="text-xs text-muted-foreground">
-              Default {DEFAULT_AUTOPILOT_PUSH_HOUR}:00. The cron job runs hourly and pushes at this hour only.
-            </p>
-          </div>
+          {!playoutMode && (
+            <div className="space-y-1.5">
+              <Label>Update hour (0–23)</Label>
+              <Input
+                type="number"
+                min={0}
+                max={23}
+                value={pushHour}
+                onChange={(e) => setPushHour(Math.max(0, Math.min(23, Math.floor(Number(e.target.value) || 0))))}
+                className="w-32"
+              />
+              <p className="text-xs text-muted-foreground">
+                Default {DEFAULT_AUTOPILOT_PUSH_HOUR}:00. The cron job runs hourly and pushes at this hour only.
+              </p>
+            </div>
+          )}
           <Button
             type="button"
             variant="secondary"
             onClick={() => updateNowMut.mutate()}
             disabled={updateNowMut.isPending}
           >
-            {updateNowMut.isPending ? "Updating…" : "Update now"}
+            {updateNowMut.isPending ? "Updating…" : playoutMode ? "Run autopilot now" : "Update now"}
           </Button>
         </CardContent>
       </Card>
