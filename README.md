@@ -24,6 +24,7 @@ Self-hosted **linear TV playout** for broadcast, FAST, and OTT operators: video 
 | **[Test report](./docs/test-report.md)** | QA status and manual smoke matrix |
 | **[Automate](./docs/automate.md)** | Scheduling automation + agentic AI roadmap |
 | **[Analytics](./docs/analytics.md)** | Viewer metrics & dashboard (Phase 1 shipped) |
+| **[Production plan](./docs/production-plan.md)** | Steps, scope, tools for production v1 |
 
 ### Backend (Go)
 
