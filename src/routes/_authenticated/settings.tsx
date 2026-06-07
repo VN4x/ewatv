@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Settings as SettingsIcon, Tv } from "lucide-react";
 
-import { supabase } from "@/integrations/supabase/client";
+import { listChannels } from "@/lib/data";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -22,12 +22,13 @@ function SettingsIndexPage() {
   const { data: channels, isLoading } = useQuery({
     queryKey: ["settings-channels-list"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("channels")
-        .select("id,name,slug,overlay_logo_url")
-        .order("name", { ascending: true });
-      if (error) throw error;
-      return (data ?? []) as ChannelRow[];
+      const data = await listChannels();
+      return data.map((c) => ({
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        overlay_logo_url: c.overlay_logo_url ?? null,
+      }));
     },
   });
 
