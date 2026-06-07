@@ -34,10 +34,23 @@ make podman-dev && make run
 | 5 | DASH, WebSocket, cron | 🔜 |
 | 6 | Frontend API client package | ✅ |
 
+## Tests
+
+```bash
+go test ./... -count=1
+```
+
+See [../docs/test-report.md](../docs/test-report.md) for full QA matrix.
+
 ## Docs
 
 - [STANDALONE.md](./STANDALONE.md) — zero-dependency deploy guide
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — system design
+- [../docs/quickstart.md](../docs/quickstart.md) — 30-minute operator quickstart
+- [../docs/usermanual.md](../docs/usermanual.md) — TV corporation user manual
+- [../docs/test-report.md](../docs/test-report.md) — QA / test report
+- [../docs/automate.md](../docs/automate.md) — automation & agentic AI evaluation
+- [../docs/analytics.md](../docs/analytics.md) — analytics dashboard evaluation
 - [deployments/podman/README.md](./deployments/podman/README.md) — production Podman
 - [LOCAL_SYNC.md](./LOCAL_SYNC.md) — Windows sync
 
