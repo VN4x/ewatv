@@ -1,7 +1,5 @@
 # Frappe Drive as storage + playout for ewatv
 
-Deliverable: write the evaluation below to `docs/frappeDrive.md` (no app code changes).
-
 ## TL;DR
 Frappe Drive is a **file manager + simple file streamer**, not a playout / linear-TV engine. Self-hosting it on a fast server gives you nice upload UX and a working single-file `<video>` preview, but it does **not** replace MistServer for back-to-back linear playout, and it does **not** give you better delivery than just serving MP4s from Caddy/nginx yourself. For ewatv it is a sideways move at best.
 
@@ -53,6 +51,3 @@ The Drive-alone row is the apples-to-apples answer to "can we replace Mist with 
 - **Do not** adopt Frappe Drive as the playout origin. Its VideoPreview is a single-file HTML5 player; "playout quality" is identical to any static MP4 host, and you lose Mist's stitching/HLS/overlay path.
 - **Consider** Drive only as an upload/library UI layered on top of the existing Mist + `/media` flow, and only if the team actually wants a Google-Drive-style interface. Otherwise the current Collections page + a plain object store is simpler.
 - Keep evaluating the real cost lever (Strimm €100/mo + Mega egress): that's solved by **Option A (client-direct Mega)** or **MEGAcmd cache + static origin**, not by Frappe Drive.
-
-## Next step after approval
-On approval, create `docs/frappeDrive.md` with the content above. No other files change.
